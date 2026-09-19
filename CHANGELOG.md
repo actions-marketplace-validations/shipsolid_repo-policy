@@ -1,6 +1,58 @@
 # CHANGELOG
 
 
+## v0.4.1 (2026-09-19)
+
+### Bug Fixes
+
+- Correct allow_fork_syncing's permissive default from true to false
+  ([`99fb988`](https://github.com/shipsolid/repo-policy/commit/99fb988ccd7c611c2afe2006911c5a7bfd0a9054))
+
+Found via live-repo verification against a real GitHub repo (shipsolid/playground): GitHub silently
+  discards allow_fork_syncing: true on any branch protection PUT where lock_branch is false --
+  confirmed by pairing them (works) and unpairing them (silently resets to false) against the real
+  branch-protection API. The old default of true meant ANY first-time apply against a
+  previously-unprotected branch inherited lock_branch: false + allow_fork_syncing: true via
+  resolve_desired()'s managed-scope current-state inheritance, and strict mode's schema-default
+  injection had the identical problem for any branch that left the field undeclared -- neither path
+  goes through model validation (Pydantic's model_copy() skips validators), so this couldn't have
+  been caught by a validator alone. False is now the default everywhere: diff._SCHEMA_DEFAULTS, both
+  backends' from_api(), and the ruleset-unsupported-fields validator's permissive-value entry. No
+  longer inverted polarity -- removed from diff._INVERTED_FIELDS.
+
+Known, expected gap closed by the very next commit: tests/test_models.py's
+  test_branch_policy_rejects_allow_fork_syncing_under_ruleset still asserts the OLD non-permissive
+  value (False) triggers ruleset rejection; it now needs True instead. Deliberately left red here
+  since that test lives in this plan's Task 2 (the new lock_branch-pairing validator), not this
+  task's file list -- fixed as Task 2 Step 1 before any new validator code is added.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Reject allow_fork_syncing: true without lock_branch: true
+  ([`89e04f5`](https://github.com/shipsolid/repo-policy/commit/89e04f549a353243f197a4efba0d316d53da3d41))
+
+Defense-in-depth alongside Task 1's default-value fix: Pydantic's model_copy() (used throughout
+  diff.resolve_desired()) skips validators, so this new validator only catches EXPLICIT policy.yml
+  declarations of the broken combination -- it cannot see values injected by schema defaults or
+  current-state inheritance, which is why Task 1's fix to the underlying representation was the
+  primary correction and this is the secondary one. Scoped to enforcement: branch_protection only --
+  under enforcement: ruleset, allow_fork_syncing: true is the allowed permissive no-op value
+  (existing _reject_ruleset_unsupported_fields validator), and lock_branch: true is itself rejected
+  there, so requiring the pairing under ruleset enforcement would be unsatisfiable.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Record the allow_fork_syncing bug as the 4th live-testing find
+  ([`2bbe0c5`](https://github.com/shipsolid/repo-policy/commit/2bbe0c59213cd225e4df213265988cdc76075586))
+
+docs/test-strategy.md's "three real bugs" section becomes four, matching its existing tone and
+  structure. ROADMAP.md's Now table gets a row matching the established Phase 1/2/3 convention.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.4.0 (2026-09-19)
 
 ### Documentation
