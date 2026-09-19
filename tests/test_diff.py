@@ -1,6 +1,6 @@
 import pytest
 
-from repo_policy.diff import PolicyResolutionError, diff, resolve_desired
+from repo_policy.diff import Change, PolicyResolutionError, diff, resolve_desired
 from repo_policy.models import BranchPolicy, PullRequestPolicy, StatusChecksPolicy
 
 PERMISSIVE = BranchPolicy(
@@ -140,6 +140,19 @@ def test_resolve_desired_strict_merges_pull_requests_field_by_field_with_schema_
         required=False, approvals=2, code_owner_review=False,
         dismiss_stale_reviews=False, require_last_push_approval=False,
     )
+
+
+def test_change_is_hashable_even_with_compound_field_values():
+    """Change is @dataclass(frozen=True), which auto-derives __hash__ from all fields -- but that
+    only actually works if every field value is itself hashable. pull_requests/status_checks
+    changes carry PullRequestPolicy/StatusChecksPolicy instances as current/desired_value."""
+    change = Change(
+        field="pull_requests",
+        current_value=PullRequestPolicy(),
+        desired_value=PullRequestPolicy(approvals=2),
+        action="modify",
+    )
+    hash(change)  # must not raise TypeError: unhashable type
 
 
 def test_is_empty_does_not_misfire_on_unrelated_object_with_a_required_attribute():

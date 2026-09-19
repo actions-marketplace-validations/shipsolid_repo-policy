@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class PullRequestPolicy(BaseModel):
+    """Frozen: these are point-in-time policy snapshots (declared, current, or resolved), never
+    mutated in place anywhere in this codebase -- frozen makes that a guarantee instead of a
+    convention, and (since every field here is a scalar) makes instances hashable, which Change
+    (diff.py) needs since it's itself a frozen dataclass whose auto-derived __hash__ requires
+    every field value to be hashable."""
+
+    model_config = ConfigDict(frozen=True)
+
     required: bool = True
     approvals: int = 1
     code_owner_review: bool = False
@@ -14,6 +22,14 @@ class PullRequestPolicy(BaseModel):
 
 
 class StatusChecksPolicy(BaseModel):
+    """Frozen for the same immutability guarantee as PullRequestPolicy -- but `required` is a
+    list, which stays unhashable regardless (pydantic's frozen-model __hash__ hashes each field
+    value, and a list is never hashable), so instances of this model still can't be hashed. Only
+    PullRequestPolicy's hashability was actually needed to fix Change's; this is immutability for
+    its own sake, not a claim of full hashability."""
+
+    model_config = ConfigDict(frozen=True)
+
     required: list[str] = Field(default_factory=list)
 
 
