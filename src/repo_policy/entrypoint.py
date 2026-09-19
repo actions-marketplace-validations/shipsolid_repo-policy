@@ -8,8 +8,10 @@ from repo_policy.cli import main
 
 
 def run() -> None:
-    config_path = os.environ.get("INPUT_CONFIG", ".github/repository-policy.yml")
-    mode = os.environ.get("INPUT_MODE", "audit")
+    # `or` (not .get(key, default)) so an explicitly empty `with: config: ''` in the caller's
+    # workflow still falls back to the documented default instead of passing "" through.
+    config_path = os.environ.get("INPUT_CONFIG") or ".github/repository-policy.yml"
+    mode = os.environ.get("INPUT_MODE") or "audit"
     if mode not in {"validate", "audit", "plan", "apply"}:
         print(f"::error::unsupported mode '{mode}' — expected validate, audit, plan, or apply", file=sys.stderr)
         sys.exit(2)
