@@ -20,6 +20,15 @@ def _expect_response(response: httpx.Response | None) -> httpx.Response:
     return response
 
 
+def _unwrap(value: object, default: bool) -> bool:
+    """GitHub's GET response wraps some booleans as {"enabled": bool}; PUT wants raw bool."""
+    if isinstance(value, dict):
+        return bool(value.get("enabled", default))
+    if value is None:
+        return default
+    return bool(value)
+
+
 class GitHubClient:
     def __init__(
         self,
@@ -117,7 +126,7 @@ class GitHubClient:
             f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection/required_signatures",
             allow_404=True,
         )
-        return bool(response is not None and response.json().get("enabled", False))
+        return response is not None and _unwrap(response.json(), False)
 
     def set_required_signatures(self, branch: str, enabled: bool) -> None:
         method = "POST" if enabled else "DELETE"
@@ -150,7 +159,7 @@ class GitHubClient:
         response = self._request(
             "GET", f"/repos/{self.owner}/{self.repo}/automated-security-fixes", allow_404=True
         )
-        return response is not None and bool(response.json().get("enabled", False))
+        return response is not None and _unwrap(response.json(), False)
 
     def enable_automated_security_fixes(self) -> None:
         self._request("PUT", f"/repos/{self.owner}/{self.repo}/automated-security-fixes")
@@ -164,7 +173,7 @@ class GitHubClient:
             "GET", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting",
             allow_404=True, allow_422=True,
         )
-        return bool(response.json().get("enabled", False)) if response is not None else None
+        return _unwrap(response.json(), False) if response is not None else None
 
     def enable_private_vulnerability_reporting(self) -> bool:
         """Returns False (meaning unavailable) on 422; True on success."""

@@ -1,16 +1,8 @@
 from __future__ import annotations
 
+from repo_policy.github_client import _unwrap
 from repo_policy.models import BranchPolicy, PullRequestPolicy
 from repo_policy.policies import pull_requests, status_checks
-
-
-def _unwrap(value: object, default: bool) -> bool:
-    """GitHub's GET response wraps some booleans as {"enabled": bool}; PUT wants raw bool."""
-    if isinstance(value, dict):
-        return bool(value.get("enabled", default))
-    if value is None:
-        return default
-    return bool(value)
 
 
 def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
