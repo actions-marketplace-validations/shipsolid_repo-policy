@@ -94,8 +94,16 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
     for result in results:
         if render:
             click.echo(render_plan(resolved_repo, result.branch, result.changes))
-        elif not result.compliant:
+        elif result.changes:
             click.echo(f"{result.branch}: {len(result.changes)} change(s) required")
+        if result.stale_branch_protection:
+            click.echo(
+                f"{result.branch}: stale classic branch protection detected -- this branch is "
+                "declared under enforcement: ruleset but GitHub still has a classic "
+                "branch-protection object for it, most likely left over from a prior "
+                "enforcement: branch_protection policy; repo-policy cannot safely remove it "
+                "automatically (no ownership marker), remove it manually if it's no longer wanted"
+            )
         any_drift = any_drift or not result.compliant
 
     if repo_settings_result.changes:
@@ -157,6 +165,12 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
             click.echo(f"{result.branch}: applied {len(result.changes)} change(s)")
         else:
             click.echo(f"{result.branch}: no changes needed")
+        if result.stale_branch_protection:
+            click.echo(
+                f"{result.branch}: classic branch protection still exists on GitHub for this "
+                "ruleset-enforced branch -- remove it manually, repo-policy will not delete it "
+                "automatically"
+            )
 
     if repo_settings_result.applied:
         click.echo(f"repo settings: applied {len(repo_settings_result.changes)} change(s)")

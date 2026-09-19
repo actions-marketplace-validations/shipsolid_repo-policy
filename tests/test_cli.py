@@ -182,6 +182,36 @@ def test_apply_applies_repo_settings_drift(mock_client_cls):
     assert "repo settings: applied 1 change(s)" in result.output
 
 
+@patch("repo_policy.cli.GitHubClient")
+def test_audit_reports_stale_branch_protection_and_exits_1(mock_client_cls, tmp_path):
+    mock_client = mock_client_cls.return_value.__enter__.return_value
+    mock_client.find_ruleset_by_name.return_value = None
+    mock_client.get_branch_protection.return_value = {"enforce_admins": {"enabled": True}}
+    config_path = tmp_path / "policy.yml"
+    config_path.write_text("version: 1\nbranches:\n  main:\n    enforcement: ruleset\n")
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["audit", "--config", str(config_path), "--repo", "acme/widgets", "--token", "t"]
+    )
+    assert result.exit_code == 1
+    assert "stale classic branch protection" in result.output
+
+
+@patch("repo_policy.cli.GitHubClient")
+def test_apply_reports_stale_branch_protection_warning(mock_client_cls, tmp_path):
+    mock_client = mock_client_cls.return_value.__enter__.return_value
+    mock_client.find_ruleset_by_name.return_value = None
+    mock_client.get_branch_protection.return_value = {"enforce_admins": {"enabled": True}}
+    config_path = tmp_path / "policy.yml"
+    config_path.write_text("version: 1\nbranches:\n  main:\n    enforcement: ruleset\n    linear_history: true\n")
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["apply", "--config", str(config_path), "--repo", "acme/widgets", "--token", "t"]
+    )
+    assert result.exit_code == 0
+    assert "classic branch protection still exists" in result.output
+
+
 @patch("repo_policy.cli.subprocess.run", side_effect=FileNotFoundError("git not found"))
 @patch("repo_policy.cli.GitHubClient")
 def test_audit_reports_usage_error_when_git_binary_is_missing(mock_client_cls, mock_run, tmp_path, monkeypatch):

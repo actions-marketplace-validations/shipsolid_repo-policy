@@ -13,6 +13,7 @@ class BranchResult:
     branch: str
     changes: list[Change]
     applied: bool
+    stale_branch_protection: bool = False
 
 
 def prefetch_rulesets(
@@ -59,9 +60,12 @@ def apply_branch(
     )
     resolved = resolve_desired(desired, current, strict=effective_strict(config, branch))
     changes = diff(resolved, current)
+    stale = (
+        desired.enforcement == "ruleset" and client.get_branch_protection(branch) is not None
+    )
 
     if not changes:
-        return BranchResult(branch=branch, changes=[], applied=False)
+        return BranchResult(branch=branch, changes=[], applied=False, stale_branch_protection=stale)
 
     if desired.enforcement == "branch_protection":
         payload = branch_protection.to_api_payload(resolved, raw)
@@ -75,7 +79,7 @@ def apply_branch(
         else:
             client.update_ruleset(ruleset_id, payload)
 
-    return BranchResult(branch=branch, changes=changes, applied=True)
+    return BranchResult(branch=branch, changes=changes, applied=True, stale_branch_protection=stale)
 
 
 def apply_all(
@@ -92,14 +96,37 @@ def prune_rulesets(
     client: GitHubClient, config: PolicyConfig, *, rulesets_cache: list[dict] | None = None
 ) -> list[str]:
     """Strict-mode only, gated by the top-level `strict` default (a removed branch has no
-    per-branch setting left to consult). Deletes only rulesets matching the `repo-policy:` naming
-    convention whose branch is no longer declared — never touches anything else."""
-    declared_names = {rulesets.ruleset_name(branch) for branch in config.branches}
+    per-branch setting left to consult). Deletes a `repo-policy:` ruleset whenever its branch is
+    no longer declared under enforcement: ruleset -- either removed from policy.yml entirely, or
+    still present but switched to enforcement: branch_protection. Only ever touches rulesets
+    matching the `repo-policy:` naming convention, so branch-name-plus-enforcement is enough to
+    prove ownership -- never touches anything else."""
+    declared_ruleset_names = {
+        rulesets.ruleset_name(branch)
+        for branch, policy in config.branches.items()
+        if policy.enforcement == "ruleset"
+    }
     all_rulesets = rulesets_cache if rulesets_cache is not None else client.list_rulesets()
     deleted: list[str] = []
     for summary in all_rulesets:
         name = summary["name"]
-        if name.startswith("repo-policy:") and name not in declared_names:
+        if name.startswith("repo-policy:") and name not in declared_ruleset_names:
             client.delete_ruleset(summary["id"])
             deleted.append(name)
     return deleted
+
+
+def detect_stale_branch_protection(client: GitHubClient, config: PolicyConfig) -> list[str]:
+    """Branches declared under enforcement: ruleset that still have a classic branch-protection
+    object on GitHub -- most likely left over from a prior enforcement: branch_protection policy.
+    repo-policy cannot safely delete classic branch protection (no ownership marker distinguishes
+    what it created from what a human configured by hand -- see ARCHITECTURE.md's documented
+    limitation for the equivalent branch-removal case), so this only detects and reports it;
+    removing it is a manual, GitHub-side action. This costs one extra GET per ruleset-enforced
+    branch on every audit/plan/apply run -- there's no metadata to tell "always was ruleset" apart
+    from "just switched from branch_protection" without checking live state every time."""
+    return [
+        branch
+        for branch, policy in config.branches.items()
+        if policy.enforcement == "ruleset" and client.get_branch_protection(branch) is not None
+    ]

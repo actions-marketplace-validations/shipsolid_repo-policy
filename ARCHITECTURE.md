@@ -150,12 +150,21 @@ does not persist state outside the process it runs in.
 - **Strict (`strict: true`, top-level default or per-branch override — branch wins):** within a
   *declared* branch, fields left unset are now actively reset to the permissive schema default
   instead of left alone. For `ruleset` only, strict additionally deletes any `repo-policy:*`-named
-  ruleset whose branch key is no longer declared (`apply.prune_rulesets`) — safe, because the name
-  itself is the only ownership marker repo-policy needs; no state file exists anywhere.
+  ruleset whose branch is no longer declared under `enforcement: ruleset` — either removed from
+  `policy.yml` entirely, or still present but switched to `enforcement: branch_protection`
+  (`apply.prune_rulesets`) — safe, because the name itself is the only ownership marker
+  repo-policy needs; no state file exists anywhere.
 - **Known limitation:** strict mode cannot fully "unprotect" a `branch_protection`-backed branch
   that's been removed from `policy.yml` — the classic branch protection API has no ownership
   metadata to identify what repo-policy created versus what a human configured by hand. Removing
   branch-protection management for a branch is a manual, GitHub-side action today.
+- **Detected but not auto-fixed:** switching a branch's `enforcement:` from `branch_protection` to
+  `ruleset` leaves the old classic branch-protection object active on GitHub (same ownership-marker
+  problem as the limitation above). `audit`/`plan`/`apply` detect and report this
+  (`stale classic branch protection detected`, via `apply.detect_stale_branch_protection`) instead
+  of silently reporting the branch compliant, but removing the stale protection is still a manual,
+  GitHub-side action. The reverse direction (`ruleset` → `branch_protection`) is fully automatic,
+  per the strict-mode bullet above.
 
 ## Repo-Level Settings: the `unavailable` Outcome
 

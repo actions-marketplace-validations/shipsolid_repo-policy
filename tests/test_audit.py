@@ -37,6 +37,16 @@ def test_audit_all_covers_every_declared_branch():
     assert {r.branch for r in results} == {"main", "release"}
 
 
+def test_audit_all_flags_stale_branch_protection_and_treats_it_as_non_compliant():
+    client = MagicMock()
+    client.find_ruleset_by_name.return_value = None
+    client.get_branch_protection.return_value = {"enforce_admins": {"enabled": True}}
+    config = PolicyConfig(version=1, branches={"main": BranchPolicy(enforcement="ruleset")})
+    results = audit_all(client, config)
+    assert results[0].stale_branch_protection is True
+    assert results[0].compliant is False
+
+
 def test_audit_all_fetches_ruleset_list_at_most_once_for_multiple_ruleset_branches():
     client = MagicMock()
     client.list_rulesets.return_value = []
