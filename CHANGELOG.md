@@ -1,6 +1,61 @@
 # CHANGELOG
 
 
+## v0.4.2 (2026-09-19)
+
+### Bug Fixes
+
+- Don't attempt ruleset-branch creation with a token that can't do it
+  ([`46308ce`](https://github.com/shipsolid/repo-policy/commit/46308ce14e0e233ef7696e08f315b1e41a32bb05))
+
+REPO_POLICY_E2E_TOKEN is scoped to Administration: Read and write only, which doesn't cover git
+  ref/branch creation (that needs the separate Contents: Read and write permission). The first real
+  CI run of the E2E workflow failed with 403 "Resource not accessible by personal access token" on
+  the self-heal POST to create repo-policy-verify.
+
+Bootstrapped the branch once, out of band, with a higher-privilege session (gh api ... git/refs).
+  _ensure_ruleset_branch_exists now only verifies presence and fails with an actionable message if
+  it's ever missing again, instead of attempting a create call the token's documented
+  least-privilege scope can't perform.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Continuous Integration
+
+- Add nightly/manual E2E workflow against the live fixture repo
+  ([`9a7e203`](https://github.com/shipsolid/repo-policy/commit/9a7e203f7abc58b29438a8587de447ee69b32775))
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Record the automated E2E suite against the live fixture repo
+  ([`463c3c5`](https://github.com/shipsolid/repo-policy/commit/463c3c5c4ff3a31f43475ea869dd2bb6cf63b852))
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Testing
+
+- Add e2e fixture policy files modeled on this session's manual verification
+  ([`9b8bf88`](https://github.com/shipsolid/repo-policy/commit/9b8bf886aaea0642750126831c845723be1a2083))
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Add e2e marker infrastructure and live fixture-repo connectivity check
+  ([`30aca6e`](https://github.com/shipsolid/repo-policy/commit/30aca6e218c169f9e217259fa06cf82f1fc342cb))
+
+Adds docs/superpowers/plans/2026-09-20-e2e-fixture-repo-testing.md, the pytest e2e marker (excluded
+  by default via addopts), and tests/e2e/conftest.py's session-scoped live-repo fixtures against
+  shipsolid/repo-policy-e2e-fixture.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Add full E2E lifecycle coverage against the live fixture repo
+  ([`663d0b5`](https://github.com/shipsolid/repo-policy/commit/663d0b5d09389cd2356934665d0171ebe9c0c509))
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.4.1 (2026-09-19)
 
 ### Bug Fixes
