@@ -367,3 +367,20 @@ def test_enable_private_vulnerability_reporting_unavailable_via_422(client):
         return_value=httpx.Response(422, json={"message": "not eligible"})
     )
     assert client.enable_private_vulnerability_reporting() is False
+
+
+@respx.mock
+def test_update_security_and_analysis_succeeds(client):
+    respx.patch("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(200, json={"security_and_analysis": {"secret_scanning": {"status": "enabled"}}})
+    )
+    data = client.update_security_and_analysis({"secret_scanning": {"status": "enabled"}})
+    assert data is not None
+
+
+@respx.mock
+def test_update_security_and_analysis_unavailable_via_422(client):
+    respx.patch("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(422, json={"message": "GHAS not enabled"})
+    )
+    assert client.update_security_and_analysis({"secret_scanning": {"status": "enabled"}}) is None

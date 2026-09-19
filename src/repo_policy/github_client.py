@@ -158,6 +158,15 @@ class GitHubClient:
         )
         return response is not None
 
+    def update_security_and_analysis(self, payload: dict) -> dict | None:
+        """Returns None when GitHub Advanced Security isn't licensed on this repo (422) -- an
+        expected, non-error outcome, not every repo has it. Any other failure still raises."""
+        response = self._request(
+            "PATCH", f"/repos/{self.owner}/{self.repo}",
+            json={"security_and_analysis": payload}, allow_422=True,
+        )
+        return response.json() if response is not None else None
+
     def list_rulesets(self) -> list[dict]:
         results: list[dict] = []
         path: str | None = f"/repos/{self.owner}/{self.repo}/rulesets"

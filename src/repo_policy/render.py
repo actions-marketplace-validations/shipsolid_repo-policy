@@ -24,6 +24,8 @@ _REPO_SETTINGS_LABELS = {
     "vulnerability_alerts": "Dependabot alerts",
     "automated_security_fixes": "Dependabot security updates",
     "private_vulnerability_reporting": "Private vulnerability reporting",
+    "secret_scanning": "Secret scanning",
+    "secret_scanning_push_protection": "Secret scanning push protection",
 }
 
 

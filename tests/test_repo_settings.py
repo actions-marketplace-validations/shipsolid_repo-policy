@@ -86,6 +86,52 @@ def test_apply_repo_settings_records_unavailable_when_enable_hits_422():
     assert "private_vulnerability_reporting" in result.unavailable
 
 
+def test_plan_repo_settings_detects_secret_scanning_drift():
+    client = MagicMock()
+    client.get_repo.return_value = {"security_and_analysis": {"secret_scanning": {"status": "disabled"}}}
+    config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(secret_scanning=True))
+    result = plan_repo_settings(client, config)
+    assert len(result.changes) == 1
+    assert result.changes[0].field == "secret_scanning"
+
+
+def test_apply_repo_settings_records_unavailable_when_ghas_not_licensed():
+    client = MagicMock()
+    client.get_repo.return_value = {"security_and_analysis": {"secret_scanning": {"status": "disabled"}}}
+    client.update_security_and_analysis.return_value = None
+    config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(secret_scanning=True))
+    result = apply_repo_settings(client, config)
+    assert result.unavailable == ["secret_scanning"]
+
+
+def test_apply_repo_settings_records_both_fields_unavailable_together():
+    client = MagicMock()
+    client.get_repo.return_value = {
+        "security_and_analysis": {
+            "secret_scanning": {"status": "disabled"},
+            "secret_scanning_push_protection": {"status": "disabled"},
+        }
+    }
+    client.update_security_and_analysis.return_value = None
+    config = PolicyConfig(
+        version=1, branches={},
+        repo_settings=RepoSettingsPolicy(secret_scanning=True, secret_scanning_push_protection=True),
+    )
+    result = apply_repo_settings(client, config)
+    assert sorted(result.unavailable) == ["secret_scanning", "secret_scanning_push_protection"]
+
+
+def test_apply_repo_settings_applies_secret_scanning_when_ghas_licensed():
+    client = MagicMock()
+    client.get_repo.return_value = {"security_and_analysis": {"secret_scanning": {"status": "disabled"}}}
+    client.update_security_and_analysis.return_value = {"security_and_analysis": {"secret_scanning": {"status": "enabled"}}}
+    config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(secret_scanning=True))
+    result = apply_repo_settings(client, config)
+    assert result.applied is True
+    assert result.unavailable == []
+    client.update_security_and_analysis.assert_called_once_with({"secret_scanning": {"status": "enabled"}})
+
+
 def test_apply_repo_settings_enables_alerts_before_security_fixes():
     """Both fields are drifted in the same apply -- vulnerability_alerts must be enabled first,
     since GitHub rejects enabling automated_security_fixes before it."""
