@@ -37,6 +37,19 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
     )
 
 
+def _restrictions_payload(current_restrictions: dict | None) -> dict | None:
+    """GitHub's GET response shapes restrictions.users/teams/apps as arrays of full objects
+    (login/slug plus other metadata); the PUT request body expects arrays of bare login/slug
+    strings. Sending the GET shape back verbatim 422s -- this is the transform between the two."""
+    if current_restrictions is None:
+        return None
+    return {
+        "users": [user["login"] for user in current_restrictions.get("users", [])],
+        "teams": [team["slug"] for team in current_restrictions.get("teams", [])],
+        "apps": [app["slug"] for app in current_restrictions.get("apps", [])],
+    }
+
+
 def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
     """`resolved` must already have every modeled field filled in (see diff.resolve_desired).
     `restrictions` is now modeled via `clear_restrictions` — but only as "null or leave alone,"
@@ -52,7 +65,10 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
         )
     return {
         "enforce_admins": bool(resolved.enforce_admins),
-        "restrictions": None if resolved.clear_restrictions else current_raw.get("restrictions"),
+        "restrictions": (
+            None if resolved.clear_restrictions
+            else _restrictions_payload(current_raw.get("restrictions"))
+        ),
         "required_pull_request_reviews": pull_requests.to_branch_protection(resolved.pull_requests),
         "required_status_checks": status_checks.to_branch_protection(
             resolved.status_checks, current_raw.get("required_status_checks")

@@ -53,8 +53,17 @@ def test_to_api_payload_builds_full_replace_body():
 
 
 def test_to_api_payload_preserves_restrictions_from_current_state():
-    """restrictions is the one PUT-required field the v1 schema still doesn't model."""
-    current_raw = {"restrictions": {"users": ["octocat"], "teams": []}}
+    """restrictions is the one PUT-required field the v1 schema still doesn't model. GitHub's GET
+    response shapes restrictions.users/teams/apps as arrays of full objects (login/slug plus
+    other metadata); the PUT request body expects arrays of bare login/slug strings -- sending
+    the GET shape back verbatim 422s."""
+    current_raw = {
+        "restrictions": {
+            "users": [{"login": "octocat", "id": 1, "type": "User"}],
+            "teams": [{"slug": "justice-league", "id": 2, "name": "Justice League"}],
+            "apps": [],
+        }
+    }
     resolved = BranchPolicy(
         pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
         linear_history=False,
@@ -63,7 +72,7 @@ def test_to_api_payload_preserves_restrictions_from_current_state():
         enforce_admins=False,
     )
     payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
-    assert payload["restrictions"] == {"users": ["octocat"], "teams": []}
+    assert payload["restrictions"] == {"users": ["octocat"], "teams": ["justice-league"], "apps": []}
 
 
 def test_from_api_none_means_clear_restrictions_true():
@@ -104,7 +113,9 @@ def test_to_api_payload_preserves_restrictions_when_clear_restrictions_false():
         allow_deletion=True,
         clear_restrictions=False,
     )
-    current_raw = {"restrictions": {"users": ["octocat"], "teams": [], "apps": []}}
+    current_raw = {
+        "restrictions": {"users": [{"login": "octocat", "id": 1}], "teams": [], "apps": []}
+    }
     payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
     assert payload["restrictions"] == {"users": ["octocat"], "teams": [], "apps": []}
 
