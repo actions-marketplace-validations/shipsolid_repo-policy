@@ -1,6 +1,139 @@
 # CHANGELOG
 
 
+## v0.4.3 (2026-09-19)
+
+### Bug Fixes
+
+- Detect and clean up stale rules when a branch's enforcement mode switches
+  ([`f9e3217`](https://github.com/shipsolid/repo-policy/commit/f9e32178ec1d1ae776546a356d6a5e3e9b24c6df))
+
+Switching enforcement: ruleset -> branch_protection left the orphaned repo-policy:<branch> ruleset
+  permanently un-prunable (prune_rulesets keyed on branch-name presence, not current enforcement) --
+  now fixed, since ruleset ownership is unambiguous via the naming convention. Switching
+  branch_protection -> ruleset left the old classic branch protection fully active and invisible to
+  audit, which reported the branch compliant -- classic branch protection has no ownership marker
+  (same reason ARCHITECTURE.md already documents for branch removal), so this direction is detected
+  and reported rather than auto-deleted.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Get_private_vulnerability_reporting fails closed, and GitHubClient stops closing injected clients
+  ([`9ac408c`](https://github.com/shipsolid/repo-policy/commit/9ac408c2cf5460ecb6024922c15315adb58f71de))
+
+get_private_vulnerability_reporting() defaulted a missing 'enabled' key to True; the structurally
+  identical get_automated_security_fixes() defaults to False. Matches that pattern now -- failing
+  open in the riskier direction was wrong for a security setting.
+
+Also fixes close()/__exit__ unconditionally closing self._client even when it was injected via the
+  constructor's client= parameter, which would break a caller sharing one httpx.Client across
+  multiple GitHubClient wrappers. Landed together since both are small fixes to the same file.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Give an actionable message when policy.yml's top level isn't a mapping
+  ([`fa1ccd8`](https://github.com/shipsolid/repo-policy/commit/fa1ccd881b36193e975379c2e776aff1b615a80a))
+
+pydantic reports a root-level type error with loc == (), which rendered as a bare ' - : <message>'
+  bullet with no location hint.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve strict_required_status_checks_policy on ruleset-enforced branches
+  ([`f291a05`](https://github.com/shipsolid/repo-policy/commit/f291a055927c8301540a7810026567a6dc92230a))
+
+The ruleset backend hardcoded strict_required_status_checks_policy: False on every apply, silently
+  disabling a human-configured 'require branches up to date' setting whenever any other declared
+  field changed. The branch_protection backend already reads this through from current state for
+  exactly this reason (see docs/test-strategy.md bug #1) -- this mirrors that fix to the ruleset
+  backend.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Re-validate resolve_desired()'s merged policy and merge pull_requests per field
+  ([`47456f3`](https://github.com/shipsolid/repo-policy/commit/47456f36fc399e201d386d079276c712f34b81f7))
+
+model_copy(update=...) never re-runs BranchPolicy's model_validators, so managed-scope mode could
+  reconstruct the exact allow_fork_syncing/lock_branch combination the allow_fork_syncing validator
+  exists to reject (a recurrence of a bug already fixed once via live-repo testing, see
+  docs/test-strategy.md bug #4) -- now caught and raised as PolicyResolutionError instead of
+  shipping to the GitHub API. Also fixes pull_requests being merged as one atomic block: a partial
+  declaration (e.g. approvals only) silently reset
+  code_owner_review/dismiss_stale_reviews/require_last_push_approval to pydantic's class defaults
+  instead of preserving current state -- now merged field-by-field via model_fields_set, matching
+  every other BranchPolicy field's managed-scope behavior.
+
+Also fixes clear_restrictions being classified with the wrong add/remove polarity in plan/audit
+  output -- it shares allow_force_push/allow_deletion's true-means-permissive polarity but was
+  missing from _INVERTED_FIELDS. Landed together since both are in diff.py.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Reject secret_scanning_push_protection without secret_scanning at config time
+  ([`0558656`](https://github.com/shipsolid/repo-policy/commit/0558656c4e1bc83ec89c274f473975536bec8547))
+
+Mirrors the existing automated_security_fixes/vulnerability_alerts validator. Without it, declaring
+  only secret_scanning_push_protection: true produced a real GitHub 422 at apply time, misreported
+  via the same 'unavailable on this repository' message used for genuinely-unlicensed GHAS -- hiding
+  an actionable config fix as if nothing could be done.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Stop CLI setup errors from colliding with the policy-drift exit code
+  ([`762299d`](https://github.com/shipsolid/repo-policy/commit/762299dbc6e535d89797a86abdfc0ea4e4c016f0))
+
+click.ClickException defaults to exit_code=1, identical to this CLI's own EXIT_DRIFT -- a missing
+  GITHUB_TOKEN, an unresolvable --repo, or a malformed --repo flag were all indistinguishable from
+  real policy drift for any CI pipeline branching on exit code.
+  _resolve_token/_resolve_repo/_split_repo now raise a _ConfigClickException subclass that forces
+  exit_code=2. Also fixes _resolve_repo() silently ignoring a failing git invocation's returncode
+  and parsing whatever stdout happened to contain regardless.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Stop retrying non-idempotent POST requests on 5xx
+  ([`1b5719e`](https://github.com/shipsolid/repo-policy/commit/1b5719e7b77a0d24b02477cc4a2a25d110d7b367))
+
+create_ruleset is a POST -- retrying it on a 5xx whose response was lost after GitHub already
+  processed the request could create a duplicate repo-policy:<branch> ruleset.
+  429/secondary-rate-limit responses still retry for every method, since GitHub rejects those before
+  doing any work.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Support disabling repo-settings toggles and stop misreporting applied
+  ([`be11aa8`](https://github.com/shipsolid/repo-policy/commit/be11aa8d06263c7615837a36302d9c16904eec5e))
+
+vulnerability_alerts/automated_security_fixes/private_vulnerability_reporting could only ever be
+  enabled -- github_client.py had no DELETE-endpoint method for any of them, so apply_repo_settings
+  always called the enable path regardless of the declared direction. Declaring false on an
+  already-enabled repo was a silent no-op reported as success, with audit re-flagging the same drift
+  forever. GitHub supports DELETE on all three endpoints (confirmed by the existing enable/disable
+  pair already implemented for required_signatures); this adds the missing disable path.
+
+Also fixes RepoSettingsResult.applied, which was bool(result.changes) and stayed True even when the
+  only detected change immediately moved to result.unavailable (e.g. a 422 from unlicensed GHAS) --
+  apply printed 'applied 1 change(s)' and 'unavailable' for the same field in the same run. Landed
+  together since both touch apply_repo_settings's final lines.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Chores
+
+- Mark fix-audit-findings plan tasks complete
+  ([`20078d5`](https://github.com/shipsolid/repo-policy/commit/20078d587acd3f9d6351fc263978e4a2dc945f07))
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Remove internal planning doc for the audit-findings fix round
+  ([`ef75e8f`](https://github.com/shipsolid/repo-policy/commit/ef75e8f10c1719fc6f2fd623cd12608753778e14))
+
+Matches this project's established convention of removing docs/superpowers/plans/*.md once the work
+  they guided has shipped (see commit cc06ebf).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.4.2 (2026-09-19)
 
 ### Bug Fixes
