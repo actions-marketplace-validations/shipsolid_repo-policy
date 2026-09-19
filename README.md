@@ -1,1 +1,70 @@
 # repo-policy
+
+Lightweight, declarative repository governance for GitHub. Define expected branch protection
+and ruleset configuration in YAML; audit, preview, and apply it locally or in CI.
+
+Not a Terraform replacement — no state file, no backend. `repo-policy` is safe to adopt
+incrementally on a live repository: by default it only ever touches branches you declare, and
+never deletes anything you didn't ask it to manage.
+
+## Install
+
+```bash
+pip install repo-policy
+```
+
+## Quick start
+
+```yaml
+# policy.yml
+version: 1
+
+branches:
+  main:
+    pull_requests:
+      required: true
+      approvals: 2
+      code_owner_review: true
+    status_checks:
+      required: [build, test]
+    signed_commits: true
+    linear_history: true
+    allow_force_push: false
+    allow_deletion: false
+```
+
+```bash
+repo-policy validate
+repo-policy audit --repo acme/widgets
+repo-policy plan --repo acme/widgets
+repo-policy apply --repo acme/widgets
+```
+
+## GitHub Action
+
+```yaml
+- uses: shipsolid/repo-policy@v1
+  with:
+    config: .github/repository-policy.yml
+    mode: audit
+```
+
+## How it works
+
+Every declared branch is diffed against live GitHub state and reconciled through one of two
+backends, selected per branch with `enforcement: branch_protection | ruleset` (default
+`branch_protection`). See [the design spec](docs/superpowers/specs/2026-09-19-repo-policy-design.md)
+for the full schema, safety model, and known v1 limitations.
+
+## Exit codes
+
+| Code | Meaning |
+| ---- | ------- |
+| 0 | Success / compliant / no-op |
+| 1 | Drift detected (`audit`/`plan`) |
+| 2 | Invalid `policy.yml` |
+| 3 | GitHub API or auth error |
+
+## License
+
+MIT
