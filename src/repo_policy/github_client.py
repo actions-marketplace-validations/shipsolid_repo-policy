@@ -78,7 +78,12 @@ class GitHubClient:
             is_rate_limited = response.status_code == 429 or (
                 response.status_code == 403 and "rate limit" in response.text.lower()
             )
-            is_retryable = is_rate_limited or response.status_code >= 500
+            # POST is not idempotent (e.g. create_ruleset) -- a 5xx after GitHub already
+            # processed the request but lost the response would duplicate the resource on retry.
+            # 429/secondary-rate-limit responses are always safe to retry regardless of method:
+            # GitHub rejects them before doing any work.
+            is_server_error = response.status_code >= 500
+            is_retryable = is_rate_limited or (is_server_error and method != "POST")
 
             if is_retryable and attempt < self._max_retries:
                 time.sleep(self._backoff_seconds * (2**attempt))

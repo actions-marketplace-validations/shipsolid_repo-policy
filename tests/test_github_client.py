@@ -54,6 +54,28 @@ def test_request_raises_after_exhausting_retries(client):
 
 
 @respx.mock
+def test_request_does_not_retry_post_on_500(client):
+    route = respx.post("https://api.github.com/repos/acme/widgets/rulesets").mock(
+        return_value=httpx.Response(500, json={"message": "boom"})
+    )
+    with pytest.raises(GitHubAPIError):
+        client._request("POST", "/repos/acme/widgets/rulesets", json={"name": "repo-policy:main"})
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_request_still_retries_post_on_429(client):
+    route = respx.post("https://api.github.com/repos/acme/widgets/rulesets")
+    route.side_effect = [
+        httpx.Response(429, json={"message": "You have exceeded a secondary rate limit"}),
+        httpx.Response(201, json={"id": 1, "name": "repo-policy:main"}),
+    ]
+    response = client._request("POST", "/repos/acme/widgets/rulesets", json={"name": "repo-policy:main"})
+    assert response.json()["id"] == 1
+    assert route.call_count == 2
+
+
+@respx.mock
 def test_request_raises_immediately_on_non_retryable_4xx(client):
     route = respx.get("https://api.github.com/repos/acme/widgets/forbidden").mock(
         return_value=httpx.Response(401, json={"message": "Bad credentials"})
