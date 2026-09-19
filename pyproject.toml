@@ -40,6 +40,10 @@ src = ["src", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "e2e: exercises the real GitHub API against the live shipsolid/repo-policy-e2e-fixture repo (requires REPO_POLICY_E2E_TOKEN); excluded by default, opt in with -m e2e",
+]
+addopts = "-m 'not e2e'"
 
 [tool.mypy]
 python_version = "3.10"

@@ -1,0 +1,20 @@
+version: 1
+strict: true
+
+branches:
+  main:
+    enforcement: branch_protection
+    pull_requests:
+      required: true
+      approvals: 1
+      code_owner_review: false
+      dismiss_stale_reviews: true
+      require_last_push_approval: true
+    linear_history: true
+    allow_force_push: false
+    allow_deletion: false
+    enforce_admins: true
+    required_conversation_resolution: true
+    lock_branch: false
+    allow_fork_syncing: false
+    clear_restrictions: true

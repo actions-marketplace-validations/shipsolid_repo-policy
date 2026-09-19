@@ -1,6 +1,6 @@
 # Roadmap
 
-> Last updated 2026-09-19 · Owner Amit Singh
+> Last updated 2026-09-20 · Owner Amit Singh
 
 ## Now
 
@@ -12,12 +12,12 @@
 | Model repo-level settings (7 fields: Dependabot, secret scanning, repo settings) | Second half of closing the gap against a sibling tool's fixed baseline — branch-protection fields (above) already shipped | shipped | TBD |
 | Model `clear_restrictions`, closing the last repo_security field gap | Every other field from the sibling tool's baseline was already covered by Phase 1/2; this was the one remaining gap | shipped | TBD |
 | Fix allow_fork_syncing's wrong permissive default | Found via live-repo verification: GitHub silently discards allow_fork_syncing: true unless lock_branch: true is also set, causing permanent phantom drift on any first-time apply | shipped | TBD |
+| Automated end-to-end test against a disposable real repo | Closes the last manual-only gap in `docs/test-strategy.md`; runs nightly/on-demand against `shipsolid/repo-policy-e2e-fixture` via `.github/workflows/e2e.yml` | shipped | TBD |
 
 ## Next
 
 | Item                                                     | Why                                                                                    | Dependency                                | Target |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------- | ------ |
-| Automated end-to-end test against a disposable real repo | Close the gap the manual checklist in `docs/test-strategy.md` currently covers by hand | a scoped CI PAT + disposable-repo fixture | TBD    |
 | CODEOWNERS / multi-maintainer ownership                  | Currently single-maintainer; not yet warranted                                         | a second regular contributor              | TBD    |
 
 ## Later (directional, unscheduled)
