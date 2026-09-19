@@ -30,8 +30,8 @@ jobs:
       # Runs before PyPI publish, not after: these two steps are independent, and the Action's
       # `uses: shipsolid/repo-policy@v0` consumers must not be blocked by an unrelated PyPI
       # failure. (A real release found this the hard way: the tag never moved because it was
-      # sequenced after PyPI, and PyPI has been failing on every release since trusted
-      # publishing was never configured.)
+      # sequenced after PyPI, and PyPI failed on every release — v0.1.0 through v0.1.2 — until
+      # the trusted publisher was registered on pypi.org; see docs/ci-cd.md. Fixed as of v0.1.3.)
       - name: Move floating major tag
         if: steps.release.outputs.released == 'true'
         env:

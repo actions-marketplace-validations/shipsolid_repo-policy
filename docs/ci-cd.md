@@ -61,6 +61,14 @@ Configured at pypi.org → Publishing → pending/active publisher:
 
 No PyPI API token is stored anywhere in this repository, by design.
 
+**Status:** working as of v0.1.3. The trusted publisher above wasn't registered on pypi.org until
+after v0.1.2 shipped, so `v0.1.0`, `v0.1.1`, and `v0.1.2` each failed at the PyPI-publish step with
+`invalid-publisher` (GitHub's OIDC token had no matching publisher to exchange against — trusted
+publishing has to be pre-registered on PyPI before the first attempt, it isn't provisioned by
+`permissions: id-token: write` alone). Those three git tags and GitHub releases exist but were
+never published to PyPI, and — since PyPI never allows re-uploading a consumed version number —
+never will be; `pip install repo-policy` starts at `0.1.3`. `v0.1.3` onward publish cleanly.
+
 ## Rollback
 
 There is no manual rollback step for a bad release — semantic-release doesn't support "undo." To
