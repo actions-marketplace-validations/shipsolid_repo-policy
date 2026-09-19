@@ -2,10 +2,13 @@
 
 ## Test Pyramid
 
-121 tests, all unit-level, organized one file per source module (`tests/test_<module>.py`) plus
-`tests/test_idempotency.py` (one integration-shaped test) and `tests/test_policies_parity.py` (a
-cross-backend regression guard). No end-to-end tests run in CI — the true end-to-end verification
-for this project is manual, against a real repository, documented below.
+215 unit-level tests (mocked via `respx`), organized one file per source module
+(`tests/test_<module>.py`) plus `tests/test_idempotency.py` (one integration-shaped test) and
+`tests/test_policies_parity.py` (a cross-backend regression guard) — plus 6 end-to-end tests in
+`tests/e2e/` that exercise the real GitHub API against a live, persistent fixture repo
+(`shipsolid/repo-policy-e2e-fixture`). The E2E suite is excluded from the default `pytest` run
+(pytest marker `e2e`); run it explicitly with `pytest -m e2e` (requires
+`REPO_POLICY_E2E_TOKEN`), or via the nightly/manual `.github/workflows/e2e.yml`.
 
 ## Approach: TDD throughout
 
@@ -72,6 +75,11 @@ real source of truth — a live repo's actual API state, or a real PyPI install.
 
 ## Manual Verification Checklist (run before any release you don't fully trust)
 
+Steps 1–7 below are now automated in `tests/e2e/test_fixture_repo.py` (run via `pytest -m e2e`,
+or the nightly `.github/workflows/e2e.yml`) — see
+`docs/superpowers/plans/2026-09-20-e2e-fixture-repo-testing.md`. This checklist remains as the
+human-readable reference and manual fallback for anyone without CI access to the fixture repo.
+
 Against a disposable repository:
 
 1. `validate` a config, confirm exit 0 on valid / exit 2 on invalid.
@@ -88,8 +96,7 @@ Against a disposable repository:
 ## Known Gaps
 
 - No CI-enforced coverage threshold.
-- No automated end-to-end test against a real GitHub repository — the checklist above is manual.
-  Automating it would require a disposable-repo-per-run fixture and a real, least-privilege PAT in
-  CI secrets; deferred (see `ROADMAP.md`).
+- ~~No automated end-to-end test against a real GitHub repository~~ — closed: see `tests/e2e/`
+  and `.github/workflows/e2e.yml`.
 - No test exercises GitHub's classic-branch-protection-specific edge cases beyond what's modeled
   (e.g. `restrictions` with actual user/team push restrictions configured).

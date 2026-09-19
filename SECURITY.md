@@ -48,6 +48,12 @@ restrict itself to a subset. This is why token scoping (above) is the primary co
   there — it contains only declarative policy, no credentials.
 - In CI, store the PAT as an encrypted repository (or organization) secret; never as a plaintext
   workflow env default or a committed file.
+- A second, narrower-scoped PAT (`REPO_POLICY_E2E_TOKEN`) exists for the automated E2E suite
+  (`tests/e2e/`, `.github/workflows/e2e.yml`): fine-grained, `Administration: Read and write`,
+  restricted to the single disposable fixture repo (`shipsolid/repo-policy-e2e-fixture`). Its
+  blast radius is bounded to that one repo — a concrete instance of the "scope the PAT as
+  narrowly as GitHub allows" mitigation already listed in the Threat Model below, not a new
+  category of risk.
 
 ## Vulnerability Management
 
