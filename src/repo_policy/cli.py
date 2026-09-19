@@ -136,11 +136,14 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
             )
         any_drift = any_drift or not result.compliant
 
-    if repo_settings_result.changes:
+    if repo_settings_result.changes or repo_settings_result.unavailable:
         if render:
             click.echo(render_repo_settings(resolved_repo, repo_settings_result))
         else:
-            click.echo(f"repo settings: {len(repo_settings_result.changes)} change(s) required")
+            if repo_settings_result.changes:
+                click.echo(f"repo settings: {len(repo_settings_result.changes)} change(s) required")
+            for field_name in repo_settings_result.unavailable:
+                click.echo(f"repo settings: {field_name} unavailable on this repository")
         any_drift = True
 
     if not any_drift and not render:
@@ -203,7 +206,10 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
             )
 
     if repo_settings_result.applied:
-        click.echo(f"repo settings: applied {len(repo_settings_result.changes)} change(s)")
+        applied_count = sum(
+            1 for c in repo_settings_result.changes if c.field not in repo_settings_result.unavailable
+        )
+        click.echo(f"repo settings: applied {applied_count} change(s)")
     for field_name in repo_settings_result.unavailable:
         click.echo(f"repo settings: {field_name} unavailable on this repository")
 

@@ -169,6 +169,52 @@ def test_plan_renders_repo_settings_drift(mock_client_cls):
 
 
 @patch("repo_policy.cli.GitHubClient")
+def test_apply_reports_partial_success_count_when_some_changes_are_unavailable(mock_client_cls, tmp_path):
+    """A field that 422s (GHAS not licensed) lands in both result.changes and
+    result.unavailable -- the printed "applied N change(s)" count must exclude it, not just the
+    applied boolean."""
+    mock_client = mock_client_cls.return_value.__enter__.return_value
+    mock_client.get_repo.return_value = {
+        "delete_branch_on_merge": False,
+        "security_and_analysis": {"secret_scanning": {"status": "disabled"}},
+    }
+    mock_client.update_security_and_analysis.return_value = None  # 422: GHAS not licensed
+    config_path = tmp_path / "policy.yml"
+    config_path.write_text(
+        "version: 1\nbranches: {}\nrepo_settings:\n"
+        "  delete_branch_on_merge: true\n  secret_scanning: true\n"
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["apply", "--config", str(config_path), "--repo", "acme/widgets", "--token", "t"]
+    )
+    assert result.exit_code == 0
+    assert "repo settings: applied 1 change(s)" in result.output
+    assert "repo settings: secret_scanning unavailable on this repository" in result.output
+
+
+@patch("repo_policy.cli.GitHubClient")
+def test_audit_reports_drift_for_declared_but_unavailable_setting_with_no_other_changes(mock_client_cls, tmp_path):
+    """A declared repo-setting that's structurally ineligible (e.g. private_vulnerability_reporting
+    on a repo that doesn't support it) must not be silently dropped just because there's zero
+    other drift -- the policy can never actually be satisfied, so this must not report compliant."""
+    mock_client = mock_client_cls.return_value.__enter__.return_value
+    mock_client.get_repo.return_value = {}
+    mock_client.get_private_vulnerability_reporting.return_value = None  # ineligible
+    config_path = tmp_path / "policy.yml"
+    config_path.write_text(
+        "version: 1\nbranches: {}\nrepo_settings:\n  private_vulnerability_reporting: true\n"
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["audit", "--config", str(config_path), "--repo", "acme/widgets", "--token", "t"]
+    )
+    assert result.exit_code == 1
+    assert "private_vulnerability_reporting" in result.output
+    assert "unavailable" in result.output
+
+
+@patch("repo_policy.cli.GitHubClient")
 def test_apply_applies_repo_settings_drift(mock_client_cls):
     mock_client = mock_client_cls.return_value.__enter__.return_value
     mock_client.get_repo.return_value = {"delete_branch_on_merge": False}
