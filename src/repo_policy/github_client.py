@@ -134,6 +134,9 @@ class GitHubClient:
     def enable_vulnerability_alerts(self) -> None:
         self._request("PUT", f"/repos/{self.owner}/{self.repo}/vulnerability-alerts")
 
+    def disable_vulnerability_alerts(self) -> None:
+        self._request("DELETE", f"/repos/{self.owner}/{self.repo}/vulnerability-alerts")
+
     def get_automated_security_fixes(self) -> bool:
         response = self._request(
             "GET", f"/repos/{self.owner}/{self.repo}/automated-security-fixes", allow_404=True
@@ -142,6 +145,9 @@ class GitHubClient:
 
     def enable_automated_security_fixes(self) -> None:
         self._request("PUT", f"/repos/{self.owner}/{self.repo}/automated-security-fixes")
+
+    def disable_automated_security_fixes(self) -> None:
+        self._request("DELETE", f"/repos/{self.owner}/{self.repo}/automated-security-fixes")
 
     def get_private_vulnerability_reporting(self) -> bool | None:
         """None means unavailable (404 or 422) -- not every repo is eligible."""
@@ -155,6 +161,13 @@ class GitHubClient:
         """Returns False (meaning unavailable) on 422; True on success."""
         response = self._request(
             "PUT", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting", allow_422=True
+        )
+        return response is not None
+
+    def disable_private_vulnerability_reporting(self) -> bool:
+        """Returns False (meaning unavailable) on 422; True on success."""
+        response = self._request(
+            "DELETE", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting", allow_422=True
         )
         return response is not None
 

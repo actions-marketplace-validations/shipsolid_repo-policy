@@ -74,7 +74,10 @@ def apply_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSetti
 
     changed_fields = {c.field for c in result.changes}
     if "vulnerability_alerts" in changed_fields:
-        client.enable_vulnerability_alerts()
+        if desired.vulnerability_alerts:
+            client.enable_vulnerability_alerts()
+        else:
+            client.disable_vulnerability_alerts()
 
     # Must run after vulnerability_alerts, above -- GitHub requires Dependabot alerts enabled
     # before Dependabot security updates can be turned on. RepoSettingsPolicy's model validator
@@ -82,12 +85,18 @@ def apply_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSetti
     # vulnerability_alerts=True declared, but that only constrains what's *declared* -- this
     # ordering is what makes the two live API calls land in the right sequence.
     if "automated_security_fixes" in changed_fields:
-        client.enable_automated_security_fixes()
+        if desired.automated_security_fixes:
+            client.enable_automated_security_fixes()
+        else:
+            client.disable_automated_security_fixes()
 
     if "private_vulnerability_reporting" in changed_fields:
-        applied = client.enable_private_vulnerability_reporting()
+        if desired.private_vulnerability_reporting:
+            applied = client.enable_private_vulnerability_reporting()
+        else:
+            applied = client.disable_private_vulnerability_reporting()
         if not applied:
             result.unavailable.append("private_vulnerability_reporting")
 
-    result.applied = bool(result.changes)
+    result.applied = any(change.field not in result.unavailable for change in result.changes)
     return result

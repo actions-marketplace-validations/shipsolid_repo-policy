@@ -285,6 +285,15 @@ def test_enable_vulnerability_alerts(client):
 
 
 @respx.mock
+def test_disable_vulnerability_alerts(client):
+    route = respx.delete("https://api.github.com/repos/acme/widgets/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    client.disable_vulnerability_alerts()
+    assert route.called
+
+
+@respx.mock
 def test_get_automated_security_fixes_enabled(client):
     respx.get("https://api.github.com/repos/acme/widgets/automated-security-fixes").mock(
         return_value=httpx.Response(200, json={"enabled": True})
@@ -306,6 +315,15 @@ def test_enable_automated_security_fixes(client):
         return_value=httpx.Response(204)
     )
     client.enable_automated_security_fixes()
+    assert route.called
+
+
+@respx.mock
+def test_disable_automated_security_fixes(client):
+    route = respx.delete("https://api.github.com/repos/acme/widgets/automated-security-fixes").mock(
+        return_value=httpx.Response(204)
+    )
+    client.disable_automated_security_fixes()
     assert route.called
 
 
@@ -367,6 +385,22 @@ def test_enable_private_vulnerability_reporting_unavailable_via_422(client):
         return_value=httpx.Response(422, json={"message": "not eligible"})
     )
     assert client.enable_private_vulnerability_reporting() is False
+
+
+@respx.mock
+def test_disable_private_vulnerability_reporting_succeeds(client):
+    respx.delete("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(204)
+    )
+    assert client.disable_private_vulnerability_reporting() is True
+
+
+@respx.mock
+def test_disable_private_vulnerability_reporting_unavailable_via_422(client):
+    respx.delete("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    assert client.disable_private_vulnerability_reporting() is False
 
 
 @respx.mock

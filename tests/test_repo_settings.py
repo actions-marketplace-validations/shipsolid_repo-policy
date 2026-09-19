@@ -66,6 +66,44 @@ def test_apply_repo_settings_enables_vulnerability_alerts():
     client.enable_vulnerability_alerts.assert_called_once()
 
 
+def test_apply_repo_settings_disables_vulnerability_alerts():
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_vulnerability_alerts.return_value = True
+    config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(vulnerability_alerts=False))
+    result = apply_repo_settings(client, config)
+    assert result.applied is True
+    client.disable_vulnerability_alerts.assert_called_once()
+    client.enable_vulnerability_alerts.assert_not_called()
+
+
+def test_apply_repo_settings_disables_automated_security_fixes():
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_automated_security_fixes.return_value = True
+    config = PolicyConfig(
+        version=1, branches={}, repo_settings=RepoSettingsPolicy(automated_security_fixes=False)
+    )
+    result = apply_repo_settings(client, config)
+    assert result.applied is True
+    client.disable_automated_security_fixes.assert_called_once()
+    client.enable_automated_security_fixes.assert_not_called()
+
+
+def test_apply_repo_settings_disables_private_vulnerability_reporting():
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_private_vulnerability_reporting.return_value = True
+    client.disable_private_vulnerability_reporting.return_value = True
+    config = PolicyConfig(
+        version=1, branches={}, repo_settings=RepoSettingsPolicy(private_vulnerability_reporting=False)
+    )
+    result = apply_repo_settings(client, config)
+    assert result.applied is True
+    client.disable_private_vulnerability_reporting.assert_called_once()
+    client.enable_private_vulnerability_reporting.assert_not_called()
+
+
 def test_plan_repo_settings_records_unavailable_when_pvr_ineligible():
     client = MagicMock()
     client.get_repo.return_value = {}
@@ -102,6 +140,7 @@ def test_apply_repo_settings_records_unavailable_when_ghas_not_licensed():
     config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(secret_scanning=True))
     result = apply_repo_settings(client, config)
     assert result.unavailable == ["secret_scanning"]
+    assert result.applied is False
 
 
 def test_apply_repo_settings_records_both_fields_unavailable_together():
