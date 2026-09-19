@@ -85,6 +85,18 @@ def test_apply_exits_0_and_applies_changes(mock_client_cls):
 
 
 @patch("repo_policy.cli.GitHubClient")
+def test_audit_reports_usage_error_on_malformed_repo(mock_client_cls):
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["audit", "--config", "tests/fixtures/policy_no_requirements.yml", "--repo", "widgets", "--token", "t"],
+    )
+    assert result.exit_code != 0
+    assert "invalid repository" in result.output
+    mock_client_cls.assert_not_called()
+
+
+@patch("repo_policy.cli.GitHubClient")
 def test_audit_reports_usage_error_when_repo_cannot_be_resolved(mock_client_cls, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)

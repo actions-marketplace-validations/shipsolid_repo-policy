@@ -39,6 +39,13 @@ def _resolve_repo(repo: str | None) -> str:
     raise click.ClickException("could not determine repository; pass --repo owner/name")
 
 
+def _split_repo(resolved_repo: str) -> tuple[str, str]:
+    if "/" not in resolved_repo:
+        raise click.ClickException(f"invalid repository {resolved_repo!r}; expected 'owner/name'")
+    owner, name = resolved_repo.split("/", 1)
+    return owner, name
+
+
 @click.group()
 def main() -> None:
     """repo-policy: declarative GitHub repository governance."""
@@ -64,7 +71,7 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
         return EXIT_CONFIG_ERROR
 
     resolved_repo = _resolve_repo(repo)
-    owner, name = resolved_repo.split("/", 1)
+    owner, name = _split_repo(resolved_repo)
 
     try:
         with GitHubClient(token=_resolve_token(token), owner=owner, repo=name) as client:
@@ -114,7 +121,7 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
         sys.exit(EXIT_CONFIG_ERROR)
 
     resolved_repo = _resolve_repo(repo)
-    owner, name = resolved_repo.split("/", 1)
+    owner, name = _split_repo(resolved_repo)
 
     try:
         with GitHubClient(token=_resolve_token(token), owner=owner, repo=name) as client:
