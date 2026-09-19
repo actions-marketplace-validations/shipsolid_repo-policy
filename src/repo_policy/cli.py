@@ -9,6 +9,7 @@ import click
 from repo_policy.apply import apply_all, prefetch_rulesets, prune_rulesets
 from repo_policy.audit import audit_all
 from repo_policy.config import ConfigError, load_policy
+from repo_policy.diff import PolicyResolutionError
 from repo_policy.github_client import GitHubAPIError, GitHubClient
 from repo_policy.render import render_plan, render_repo_settings
 from repo_policy.repo_settings import apply_repo_settings, plan_repo_settings
@@ -89,6 +90,9 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
     except GitHubAPIError as exc:
         click.echo(str(exc), err=True)
         return EXIT_API_ERROR
+    except PolicyResolutionError as exc:
+        click.echo(str(exc), err=True)
+        return EXIT_CONFIG_ERROR
 
     any_drift = False
     for result in results:
@@ -159,6 +163,9 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
     except GitHubAPIError as exc:
         click.echo(str(exc), err=True)
         sys.exit(EXIT_API_ERROR)
+    except PolicyResolutionError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(EXIT_CONFIG_ERROR)
 
     for result in results:
         if result.applied:

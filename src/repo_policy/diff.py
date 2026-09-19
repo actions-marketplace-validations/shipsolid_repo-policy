@@ -3,9 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from pydantic import ValidationError
+
 from repo_policy.models import BranchPolicy, PullRequestPolicy
 
 ChangeAction = Literal["add", "modify", "remove"]
+
+
+class PolicyResolutionError(Exception):
+    """Raised when resolve_desired() merges a declared policy with current GitHub state into a
+    combination BranchPolicy's own validators reject (e.g. inheriting allow_fork_syncing=True
+    from current while declaring lock_branch=False) -- model_copy() doesn't re-validate, so this
+    is what actually catches it before the invalid combination reaches the GitHub API."""
 
 _FIELDS = (
     "pull_requests",
@@ -38,14 +47,15 @@ _SCHEMA_DEFAULTS: dict[str, Any] = {
     "clear_restrictions": True,
 }
 
-# allow_force_push/allow_deletion have inverted polarity vs. every other field: False means a
-# restriction IS present (force push blocked), True means no restriction — the opposite of
-# fields like linear_history, where False/empty means no rule exists. allow_fork_syncing is NOT
-# inverted, despite superficially resembling these two -- GitHub only honors
-# allow_fork_syncing=true when lock_branch=true is also set (see models.py's
-# _allow_fork_syncing_requires_lock_branch validator), so False/unset is the safe, always-stable
-# default here, not True. Confirmed via live-repo verification -- see docs/test-strategy.md.
-_INVERTED_FIELDS = {"allow_force_push", "allow_deletion"}
+# allow_force_push/allow_deletion/clear_restrictions have inverted polarity vs. every other
+# field: False means a restriction IS present (force push blocked / a push-restriction allowlist
+# exists), True means no restriction — the opposite of fields like linear_history, where
+# False/empty means no rule exists. allow_fork_syncing is NOT inverted, despite superficially
+# resembling these -- GitHub only honors allow_fork_syncing=true when lock_branch=true is also
+# set (see models.py's _allow_fork_syncing_requires_lock_branch validator), so False/unset is the
+# safe, always-stable default here, not True. Confirmed via live-repo verification -- see
+# docs/test-strategy.md.
+_INVERTED_FIELDS = {"allow_force_push", "allow_deletion", "clear_restrictions"}
 
 
 @dataclass(frozen=True)
@@ -59,9 +69,14 @@ class Change:
 def resolve_desired(desired: BranchPolicy, current: BranchPolicy, *, strict: bool) -> BranchPolicy:
     """Fill in every undeclared (None) field: from `current` in managed-scope mode, or from the
     permissive schema default in strict mode. The result always has every field concretely set,
-    so `diff()` never has to special-case None."""
+    so `diff()` never has to special-case None. Re-validates the merged result (see
+    PolicyResolutionError) since BranchPolicy.model_validate() re-runs every model_validator,
+    unlike model_copy()."""
     resolved: dict[str, Any] = {}
     for field in _FIELDS:
+        if field == "pull_requests":
+            resolved[field] = _merge_pull_requests(desired.pull_requests, current.pull_requests, strict=strict)
+            continue
         value = getattr(desired, field)
         if value is not None:
             resolved[field] = value
@@ -69,7 +84,41 @@ def resolve_desired(desired: BranchPolicy, current: BranchPolicy, *, strict: boo
             resolved[field] = _SCHEMA_DEFAULTS[field]
         else:
             resolved[field] = getattr(current, field)
-    return desired.model_copy(update=resolved)
+    try:
+        return BranchPolicy.model_validate(
+            {"enforcement": desired.enforcement, "strict": desired.strict, **resolved}
+        )
+    except ValidationError as exc:
+        raise PolicyResolutionError(
+            "resolving declared policy against current GitHub state produced an invalid "
+            f"combination: {exc}"
+        ) from exc
+
+
+def _merge_pull_requests(
+    desired_pr: PullRequestPolicy | None, current_pr: PullRequestPolicy | None, *, strict: bool
+) -> PullRequestPolicy:
+    """Mirrors resolve_desired()'s top-level field-by-field merge one level deeper: only the
+    sub-fields the user actually wrote in policy.yml (tracked via pydantic's model_fields_set)
+    come from `desired_pr`; every other sub-field is preserved from `current_pr` in managed-scope
+    mode, or reset to the permissive schema default in strict mode -- never silently substituted
+    with PullRequestPolicy's own class defaults. `current_pr` is typed Optional to match
+    BranchPolicy.pull_requests, though in practice branch_protection.from_api/rulesets.from_api
+    always populate it concretely; None falls back to the schema default just like `strict` does."""
+    schema_default = _SCHEMA_DEFAULTS["pull_requests"]
+    effective_current = current_pr if current_pr is not None else schema_default
+    if desired_pr is None:
+        return schema_default if strict else effective_current
+    declared_fields = desired_pr.model_fields_set
+    merged: dict[str, Any] = {}
+    for field_name in PullRequestPolicy.model_fields:
+        if field_name in declared_fields:
+            merged[field_name] = getattr(desired_pr, field_name)
+        elif strict:
+            merged[field_name] = getattr(schema_default, field_name)
+        else:
+            merged[field_name] = getattr(effective_current, field_name)
+    return PullRequestPolicy(**merged)
 
 
 def diff(desired: BranchPolicy, current: BranchPolicy) -> list[Change]:
