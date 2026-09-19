@@ -28,7 +28,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       # Runs before PyPI publish, not after: these two steps are independent, and the Action's
-      # `uses: shipsolid/repo-policy@v1` consumers must not be blocked by an unrelated PyPI
+      # `uses: shipsolid/repo-policy@v0` consumers must not be blocked by an unrelated PyPI
       # failure. (A real release found this the hard way: the tag never moved because it was
       # sequenced after PyPI, and PyPI has been failing on every release since trusted
       # publishing was never configured.)

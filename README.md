@@ -43,11 +43,14 @@ repo-policy apply --repo acme/widgets
 ## GitHub Action
 
 ```yaml
-- uses: shipsolid/repo-policy@v1
+- uses: shipsolid/repo-policy@v0
   with:
     config: .github/repository-policy.yml
     mode: audit
 ```
+
+The floating tag tracks the current major version (`v0` until a `1.0.0` release ships), the same
+convention `actions/checkout` and similar Actions use.
 
 ## How it works
 
