@@ -61,6 +61,14 @@ def test_render_plan_shows_clear_restrictions_label():
     assert "+ Push restrictions" in output
 
 
+def test_render_plan_falls_back_to_raw_field_name_for_unknown_field():
+    """Defensive fallback: a future BranchPolicy field added to diff._FIELDS without a matching
+    _LABELS entry must render its raw name instead of raising KeyError."""
+    changes = [Change(field="some_future_field", current_value=False, desired_value=True, action="add")]
+    output = render_plan("acme/widgets", "main", changes)
+    assert "+ some_future_field" in output
+
+
 def test_render_repo_settings_reports_no_changes():
     output = render_repo_settings("acme/widgets", RepoSettingsResult())
     assert "No repo-level setting changes required." in output

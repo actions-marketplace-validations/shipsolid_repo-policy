@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from repo_policy.diff import Change
+from repo_policy.diff import _FIELDS, Change
 from repo_policy.repo_settings import RepoSettingsResult
 
 _SYMBOLS = {"add": "+", "modify": "~", "remove": "-"}
@@ -34,13 +34,13 @@ def render_plan(repo: str, branch: str, changes: list[Change]) -> str:
     changed_fields = {change.field for change in changes}
     lines = [f"Repository: {repo}", f"Branch: {branch}", ""]
 
-    for field, label in _LABELS.items():
+    for field in _FIELDS:
         if field not in changed_fields:
-            lines.append(f"✓ {label}")
+            lines.append(f"✓ {_LABELS.get(field, field)}")
 
     for change in changes:
         symbol = _SYMBOLS[change.action]
-        label = _LABELS[change.field]
+        label = _LABELS.get(change.field, change.field)
         lines.append(f"{symbol} {label:<28} {change.current_value} → {change.desired_value}")
 
     lines.append("")
