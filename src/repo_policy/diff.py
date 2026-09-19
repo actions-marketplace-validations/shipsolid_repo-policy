@@ -141,6 +141,14 @@ def diff(desired: BranchPolicy, current: BranchPolicy) -> list[Change]:
         # drift and re-issues a no-op API call on every apply for either case.
         if _is_empty(field, desired_value) and _is_empty(field, current_value):
             continue
+        # clear_restrictions is a "preserve whatever's there" declaration when False, not a
+        # target state -- when current is already empty (clear_restrictions=True, no live
+        # restriction to preserve), declaring False can never actually change the API payload
+        # (branch_protection.to_api_payload's restrictions field collapses to None either way,
+        # since there's nothing to carry forward), unlike every other inverted field, where an
+        # empty current and a non-empty desired is a real, applicable change.
+        if field == "clear_restrictions" and current_value is True:
+            continue
         changes.append(
             Change(
                 field=field,

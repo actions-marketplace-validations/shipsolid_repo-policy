@@ -194,6 +194,30 @@ def test_diff_treats_declared_not_required_pull_requests_as_equivalent_regardles
     assert diff(desired, current) == []
 
 
+def test_diff_reports_no_drift_for_clear_restrictions_false_when_nothing_to_preserve():
+    """clear_restrictions=False means "preserve whatever restriction is currently there" -- but
+    when current.clear_restrictions is True (no live restriction exists at all), there is nothing
+    to preserve, so branch_protection.to_api_payload sends restrictions: None either way
+    (confirmed: _restrictions_payload(None) is None regardless of resolved.clear_restrictions).
+    Declaring clear_restrictions: false on such a branch must not report permanent phantom drift
+    for a declared value that can never actually change GitHub's state."""
+    current = PERMISSIVE.model_copy(update={"clear_restrictions": True})
+    desired = PERMISSIVE.model_copy(update={"clear_restrictions": False})
+    assert diff(desired, current) == []
+
+
+def test_diff_still_reports_drift_clearing_a_restriction_that_actually_exists():
+    """The other direction must still work: an existing restriction (current.clear_restrictions
+    is False) really is removed when clear_restrictions: true is declared -- that's a genuine,
+    reportable change, not the same "nothing to preserve" no-op as the test above."""
+    current = PERMISSIVE.model_copy(update={"clear_restrictions": False})
+    desired = PERMISSIVE.model_copy(update={"clear_restrictions": True})
+    changes = diff(desired, current)
+    assert len(changes) == 1
+    assert changes[0].field == "clear_restrictions"
+    assert changes[0].action == "remove"
+
+
 def test_clear_restrictions_inverted_polarity_remove_when_clearing_an_existing_restriction():
     """clear_restrictions=False means an actual restriction exists (non-permissive); True means
     it's cleared (permissive) -- the same true-means-permissive polarity as allow_force_push/
