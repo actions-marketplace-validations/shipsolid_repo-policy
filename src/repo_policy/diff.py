@@ -73,8 +73,11 @@ class Change:
 
 def resolve_desired(desired: BranchPolicy, current: BranchPolicy, *, strict: bool) -> BranchPolicy:
     """Fill in every undeclared (None) field: from `current` in managed-scope mode, or from the
-    permissive schema default in strict mode. The result always has every field concretely set,
-    so `diff()` never has to special-case None. Re-validates the merged result (see
+    permissive schema default in strict mode. Every field ends up set to its intended value --
+    except `status_checks`, whose own permissive value (`_SCHEMA_DEFAULTS["status_checks"]`) is
+    deliberately `None`, matching how branch_protection.from_api/rulesets.from_api represent "no
+    status checks configured"; `diff()`'s `_is_empty` already treats that `None` as empty, the
+    same as every other field's permissive value. Re-validates the merged result (see
     PolicyResolutionError) since BranchPolicy.model_validate() re-runs every model_validator,
     unlike model_copy()."""
     resolved: dict[str, Any] = {}

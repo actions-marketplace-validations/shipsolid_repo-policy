@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from repo_policy.github_client import GitHubClient
 from repo_policy.models import PolicyConfig
 from repo_policy.policies.repo_settings import (
+    _FLAT_FIELDS,
+    _SECURITY_AND_ANALYSIS_FIELDS,
     RepoSettingChange,
     diff_flat_settings,
     diff_security_and_analysis,
@@ -60,13 +62,11 @@ def apply_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSetti
 
     result = plan_repo_settings(client, config)
 
-    flat_changes = [c for c in result.changes if c.field in ("delete_branch_on_merge", "allow_update_branch")]
+    flat_changes = [c for c in result.changes if c.field in _FLAT_FIELDS]
     if flat_changes:
         client.update_repo_settings(to_flat_settings_payload(flat_changes))
 
-    security_changes = [
-        c for c in result.changes if c.field in ("secret_scanning", "secret_scanning_push_protection")
-    ]
+    security_changes = [c for c in result.changes if c.field in _SECURITY_AND_ANALYSIS_FIELDS]
     if security_changes:
         outcome = client.update_security_and_analysis(to_security_and_analysis_payload(security_changes))
         if outcome is None:
