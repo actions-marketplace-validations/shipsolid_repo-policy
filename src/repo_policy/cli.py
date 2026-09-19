@@ -11,6 +11,7 @@ from repo_policy.audit import audit_all
 from repo_policy.config import ConfigError, load_policy
 from repo_policy.diff import PolicyResolutionError
 from repo_policy.github_client import GitHubAPIError, GitHubClient
+from repo_policy.models import PolicyConfig
 from repo_policy.render import render_plan, render_repo_settings
 from repo_policy.repo_settings import apply_repo_settings, plan_repo_settings
 
@@ -69,6 +70,21 @@ def _split_repo(resolved_repo: str) -> tuple[str, str]:
     return owner, name
 
 
+def _build_client(
+    config_path: str, repo: str | None, token: str | None
+) -> tuple[PolicyConfig, str, GitHubClient]:
+    """Shared setup for _run_check (audit/plan) and apply: load the policy, resolve the target
+    repository, and construct the GitHub client. ConfigError (from load_policy) and
+    click.ClickException (from _resolve_repo/_split_repo/_resolve_token) both propagate uncaught
+    -- each caller keeps its own ConfigError exit-code handling, while ClickException is already
+    handled automatically by click's own command dispatch."""
+    config = load_policy(config_path)
+    resolved_repo = _resolve_repo(repo)
+    owner, name = _split_repo(resolved_repo)
+    client = GitHubClient(token=_resolve_token(token), owner=owner, repo=name)
+    return config, resolved_repo, client
+
+
 @click.group()
 def main() -> None:
     """repo-policy: declarative GitHub repository governance."""
@@ -88,16 +104,13 @@ def validate(config_path: str) -> None:
 
 def _run_check(config_path: str, repo: str | None, token: str | None, *, render: bool) -> int:
     try:
-        config = load_policy(config_path)
+        config, resolved_repo, client = _build_client(config_path, repo, token)
     except ConfigError as exc:
         click.echo(str(exc), err=True)
         return EXIT_CONFIG_ERROR
 
-    resolved_repo = _resolve_repo(repo)
-    owner, name = _split_repo(resolved_repo)
-
     try:
-        with GitHubClient(token=_resolve_token(token), owner=owner, repo=name) as client:
+        with client as client:
             results = audit_all(client, config)
             repo_settings_result = plan_repo_settings(client, config)
     except GitHubAPIError as exc:
@@ -157,16 +170,13 @@ def plan(config_path: str, repo: str | None, token: str | None) -> None:
 @click.option("--token", default=None)
 def apply(config_path: str, repo: str | None, token: str | None) -> None:
     try:
-        config = load_policy(config_path)
+        config, _resolved_repo, client = _build_client(config_path, repo, token)
     except ConfigError as exc:
         click.echo(str(exc), err=True)
         sys.exit(EXIT_CONFIG_ERROR)
 
-    resolved_repo = _resolve_repo(repo)
-    owner, name = _split_repo(resolved_repo)
-
     try:
-        with GitHubClient(token=_resolve_token(token), owner=owner, repo=name) as client:
+        with client as client:
             rulesets_cache = prefetch_rulesets(client, config, force=config.strict)
             results = apply_all(client, config, rulesets_cache=rulesets_cache)
             if config.strict:
