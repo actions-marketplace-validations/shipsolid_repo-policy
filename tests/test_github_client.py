@@ -65,6 +65,18 @@ def test_request_raises_immediately_on_non_retryable_4xx(client):
 
 
 @respx.mock
+def test_request_retries_on_429_then_succeeds(client):
+    route = respx.get("https://api.github.com/repos/acme/widgets/rate-limited")
+    route.side_effect = [
+        httpx.Response(429, json={"message": "You have exceeded a secondary rate limit"}),
+        httpx.Response(200, json={"ok": True}),
+    ]
+    response = client._request("GET", "/repos/acme/widgets/rate-limited")
+    assert response.json() == {"ok": True}
+    assert route.call_count == 2
+
+
+@respx.mock
 def test_get_branch_protection_returns_none_when_unprotected(client):
     respx.get("https://api.github.com/repos/acme/widgets/branches/main/protection").mock(
         return_value=httpx.Response(404, json={"message": "Not Found"})
