@@ -20,12 +20,23 @@ EXIT_CONFIG_ERROR = 2
 EXIT_API_ERROR = 3
 
 
+class _ConfigClickException(click.ClickException):
+    """Setup/config failures (missing token, unresolvable repo, malformed --repo) are policy.yml-
+    adjacent user errors, not policy drift -- ClickException's default exit_code (1) collides with
+    this CLI's own EXIT_DRIFT (1), which would make a CI pipeline branching on exit code unable to
+    tell a missing GITHUB_TOKEN apart from real drift. Force EXIT_CONFIG_ERROR (2) instead."""
+
+    exit_code = EXIT_CONFIG_ERROR
+
+
+def _config_error(message: str) -> click.ClickException:
+    return _ConfigClickException(message)
+
+
 def _resolve_token(token: str | None) -> str:
     resolved = token or os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if not resolved:
-        raise click.ClickException(
-            "no GitHub token found; pass --token or set GITHUB_TOKEN/GH_TOKEN"
-        )
+        raise _config_error("no GitHub token found; pass --token or set GITHUB_TOKEN/GH_TOKEN")
     return resolved
 
 
@@ -40,18 +51,20 @@ def _resolve_repo(repo: str | None) -> str:
             ["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=False
         )
     except FileNotFoundError:
-        raise click.ClickException("could not determine repository; pass --repo owner/name") from None
+        raise _config_error("could not determine repository; pass --repo owner/name") from None
+    if result.returncode != 0:
+        raise _config_error("could not determine repository; pass --repo owner/name") from None
     url = result.stdout.strip()
     url = url.removesuffix(".git")
     for separator in ("github.com:", "github.com/"):
         if separator in url:
             return url.split(separator, 1)[1]
-    raise click.ClickException("could not determine repository; pass --repo owner/name")
+    raise _config_error("could not determine repository; pass --repo owner/name")
 
 
 def _split_repo(resolved_repo: str) -> tuple[str, str]:
     if "/" not in resolved_repo:
-        raise click.ClickException(f"invalid repository {resolved_repo!r}; expected 'owner/name'")
+        raise _config_error(f"invalid repository {resolved_repo!r}; expected 'owner/name'")
     owner, name = resolved_repo.split("/", 1)
     return owner, name
 

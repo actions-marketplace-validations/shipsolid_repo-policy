@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
@@ -108,7 +108,7 @@ def test_audit_reports_usage_error_on_malformed_repo(mock_client_cls):
         main,
         ["audit", "--config", "tests/fixtures/policy_no_requirements.yml", "--repo", "widgets", "--token", "t"],
     )
-    assert result.exit_code != 0
+    assert result.exit_code == 2
     assert "invalid repository" in result.output
     mock_client_cls.assert_not_called()
 
@@ -120,7 +120,7 @@ def test_audit_reports_usage_error_when_repo_cannot_be_resolved(mock_client_cls,
     (tmp_path / "policy.yml").write_text("version: 1\nbranches:\n  main: {}\n")
     runner = CliRunner()
     result = runner.invoke(main, ["audit", "--token", "t"])
-    assert result.exit_code != 0
+    assert result.exit_code == 2
     mock_client_cls.assert_not_called()
 
 
@@ -133,7 +133,7 @@ def test_audit_reports_usage_error_when_no_token_configured(mock_client_cls, mon
         main,
         ["audit", "--config", "tests/fixtures/policy_no_requirements.yml", "--repo", "acme/widgets"],
     )
-    assert result.exit_code != 0
+    assert result.exit_code == 2
     assert "no GitHub token" in result.output
     mock_client_cls.assert_not_called()
 
@@ -228,6 +228,23 @@ def test_audit_reports_config_error_on_invalid_managed_scope_merge(mock_client_c
     assert result.exit_code == 2
 
 
+@patch("repo_policy.cli.GitHubClient")
+def test_audit_reports_usage_error_when_git_remote_command_fails(mock_client_cls, tmp_path, monkeypatch):
+    """A nonzero exit from `git remote get-url origin` (e.g. no such remote) must not be silently
+    parsed as if it succeeded -- only checking stdout content (not returncode) risks treating a
+    failing command's incidental stdout as a valid owner/repo pair."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    (tmp_path / "policy.yml").write_text("version: 1\nbranches:\n  main: {}\n")
+    with patch("repo_policy.cli.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=128, stdout="", stderr="fatal: no such remote 'origin'")
+        runner = CliRunner()
+        result = runner.invoke(main, ["audit", "--token", "t"])
+    assert result.exit_code == 2
+    assert "could not determine repository" in result.output
+    mock_client_cls.assert_not_called()
+
+
 @patch("repo_policy.cli.subprocess.run", side_effect=FileNotFoundError("git not found"))
 @patch("repo_policy.cli.GitHubClient")
 def test_audit_reports_usage_error_when_git_binary_is_missing(mock_client_cls, mock_run, tmp_path, monkeypatch):
@@ -236,6 +253,6 @@ def test_audit_reports_usage_error_when_git_binary_is_missing(mock_client_cls, m
     (tmp_path / "policy.yml").write_text("version: 1\nbranches:\n  main: {}\n")
     runner = CliRunner()
     result = runner.invoke(main, ["audit", "--token", "t"])
-    assert result.exit_code != 0
+    assert result.exit_code == 2
     assert "could not determine repository" in result.output
     mock_client_cls.assert_not_called()
