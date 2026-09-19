@@ -18,6 +18,7 @@ _FIELDS = (
     "required_conversation_resolution",
     "lock_branch",
     "allow_fork_syncing",
+    "clear_restrictions",
 )
 
 _SCHEMA_DEFAULTS: dict[str, Any] = {
@@ -34,6 +35,7 @@ _SCHEMA_DEFAULTS: dict[str, Any] = {
     "required_conversation_resolution": False,
     "lock_branch": False,
     "allow_fork_syncing": True,
+    "clear_restrictions": True,
 }
 
 # allow_force_push/allow_deletion/allow_fork_syncing have inverted polarity vs. every other field:

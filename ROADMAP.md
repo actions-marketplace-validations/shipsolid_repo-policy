@@ -10,6 +10,7 @@
 | Document the `GITHUB_TOKEN` platform limitation | Every Action consumer would otherwise hit an unexplained 403 on first use | shipped | v0.1.4 |
 | Model the 6 previously-unenforced branch-protection fields | Closed a real coverage gap against a sibling tool's fixed baseline; `enforce_admins` in particular is the highest-impact single field repo-policy didn't enforce | shipped | TBD |
 | Model repo-level settings (7 fields: Dependabot, secret scanning, repo settings) | Second half of closing the gap against a sibling tool's fixed baseline — branch-protection fields (above) already shipped | shipped | TBD |
+| Model `clear_restrictions`, closing the last repo_security field gap | Every other field from the sibling tool's baseline was already covered by Phase 1/2; this was the one remaining gap | shipped | TBD |
 
 ## Next
 

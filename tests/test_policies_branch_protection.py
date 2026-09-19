@@ -66,6 +66,49 @@ def test_to_api_payload_preserves_restrictions_from_current_state():
     assert payload["restrictions"] == {"users": ["octocat"], "teams": []}
 
 
+def test_from_api_none_means_clear_restrictions_true():
+    result = branch_protection.from_api(None, signed_commits=False)
+    assert result.clear_restrictions is True
+
+
+def test_from_api_reads_clear_restrictions_true_when_no_live_restriction():
+    data = {"restrictions": None}
+    result = branch_protection.from_api(data, signed_commits=False)
+    assert result.clear_restrictions is True
+
+
+def test_from_api_reads_clear_restrictions_false_when_live_restriction_exists():
+    data = {"restrictions": {"users": ["octocat"], "teams": [], "apps": []}}
+    result = branch_protection.from_api(data, signed_commits=False)
+    assert result.clear_restrictions is False
+
+
+def test_to_api_payload_forces_restrictions_null_when_clear_restrictions_true():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=False,
+        allow_force_push=True,
+        allow_deletion=True,
+        clear_restrictions=True,
+    )
+    current_raw = {"restrictions": {"users": ["octocat"], "teams": [], "apps": []}}
+    payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
+    assert payload["restrictions"] is None
+
+
+def test_to_api_payload_preserves_restrictions_when_clear_restrictions_false():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=False,
+        allow_force_push=True,
+        allow_deletion=True,
+        clear_restrictions=False,
+    )
+    current_raw = {"restrictions": {"users": ["octocat"], "teams": [], "apps": []}}
+    payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
+    assert payload["restrictions"] == {"users": ["octocat"], "teams": [], "apps": []}
+
+
 def test_to_api_payload_writes_enforce_admins_from_resolved_policy():
     resolved = BranchPolicy(
         pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),

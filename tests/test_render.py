@@ -55,6 +55,12 @@ def test_render_plan_shows_fork_syncing_label():
     assert "+ Fork syncing" in output
 
 
+def test_render_plan_shows_clear_restrictions_label():
+    changes = [Change(field="clear_restrictions", current_value=False, desired_value=True, action="add")]
+    output = render_plan("acme/widgets", "main", changes)
+    assert "+ Push restrictions" in output
+
+
 def test_render_repo_settings_reports_no_changes():
     output = render_repo_settings("acme/widgets", RepoSettingsResult())
     assert "No repo-level setting changes required." in output

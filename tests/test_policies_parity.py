@@ -24,6 +24,7 @@ PERMISSIVE = BranchPolicy(
     required_conversation_resolution=False,
     lock_branch=False,
     allow_fork_syncing=True,
+    clear_restrictions=True,
 )
 
 RESTRICTIVE_VALUES = {
@@ -40,12 +41,23 @@ RESTRICTIVE_VALUES = {
     "required_conversation_resolution": True,
     "lock_branch": True,
     "allow_fork_syncing": False,
+    "clear_restrictions": False,
 }
 
 # signed_commits is deliberately excluded here: for the branch_protection backend it's handled
 # by a separate GitHub endpoint (GitHubClient.set_required_signatures), never by to_api_payload —
 # that path is covered by test_apply_branch_sets_signed_commits_separately instead.
-BRANCH_PROTECTION_FIELDS = [f for f in _FIELDS if f != "signed_commits"]
+#
+# clear_restrictions is deliberately excluded too: this test calls to_api_payload with
+# current_raw=None for both the baseline and the field-under-test, which means there is no existing
+# `restrictions` value to preserve in either case -- clear_restrictions=True and =False both
+# collapse to `restrictions: None` in the payload, so this generic comparison can't tell them apart
+# (confirmed by actually running it: the assertion fails on real output, not a hypothetical). The
+# real round-trip -- clearing an existing restriction vs. preserving one -- is covered directly in
+# tests/test_policies_branch_protection.py's test_to_api_payload_forces_restrictions_null_when_clear_restrictions_true
+# and test_to_api_payload_preserves_restrictions_when_clear_restrictions_false, both of which pass a
+# non-empty current_raw so the distinction is actually observable.
+BRANCH_PROTECTION_FIELDS = [f for f in _FIELDS if f not in ("signed_commits", "clear_restrictions")]
 
 # enforce_admins/required_conversation_resolution/lock_branch/allow_fork_syncing have no GitHub
 # Rulesets equivalent -- BranchPolicy's model validator (models.py) rejects setting them under
@@ -53,6 +65,7 @@ BRANCH_PROTECTION_FIELDS = [f for f in _FIELDS if f != "signed_commits"]
 # which hardcodes each to its permissive constant instead of reading it).
 RULESET_UNSUPPORTED_FIELDS = {
     "enforce_admins", "required_conversation_resolution", "lock_branch", "allow_fork_syncing",
+    "clear_restrictions",
 }
 RULESET_FIELDS = [f for f in _FIELDS if f not in RULESET_UNSUPPORTED_FIELDS]
 
