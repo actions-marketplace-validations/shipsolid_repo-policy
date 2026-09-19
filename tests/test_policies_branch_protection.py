@@ -105,6 +105,18 @@ def test_to_api_payload_writes_lock_branch():
     assert payload["lock_branch"] is True
 
 
+def test_to_api_payload_writes_allow_fork_syncing():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=False,
+        allow_force_push=True,
+        allow_deletion=True,
+        allow_fork_syncing=False,
+    )
+    payload = branch_protection.to_api_payload(resolved, current_raw=None)
+    assert payload["allow_fork_syncing"] is False
+
+
 def test_to_api_payload_preserves_unmodeled_status_check_strict_field():
     """Regression test: a targeted change to one declared field (allow_force_push) must not
     silently reset the status-check 'strict' (require branches up to date) setting — the one

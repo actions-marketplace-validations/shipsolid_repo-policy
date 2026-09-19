@@ -14,6 +14,7 @@ _LABELS = {
     "enforce_admins": "Admin enforcement",
     "required_conversation_resolution": "Conversation resolution",
     "lock_branch": "Branch lock",
+    "allow_fork_syncing": "Fork syncing",
 }
 
 

@@ -25,6 +25,7 @@ class StatusChecksPolicy(BaseModel):
 # allowed; `enforce_admins: true` is a real restriction with no ruleset equivalent and is rejected.
 _RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
     "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
+    "allow_fork_syncing": True,  # inverted polarity: True is the permissive value here
 }
 
 
@@ -40,6 +41,7 @@ class BranchPolicy(BaseModel):
     enforce_admins: bool | None = None
     required_conversation_resolution: bool | None = None
     lock_branch: bool | None = None
+    allow_fork_syncing: bool | None = None
 
     @model_validator(mode="after")
     def _reject_ruleset_unsupported_fields(self) -> "BranchPolicy":

@@ -1072,6 +1072,38 @@ RULESET_UNSUPPORTED_FIELDS = {
 }
 ```
 
+**Step 13b (found during execution, not anticipated when this plan was written):** this file's own
+`PERMISSIVE` `BranchPolicy` fixture — separate from `tests/test_diff.py`'s — was never updated with
+`enforce_admins`/`required_conversation_resolution`/`lock_branch` in Tasks 2-4 either, and it went
+undetected because `test_field_is_represented_by_branch_protection_backend`'s `resolved =
+PERMISSIVE.model_copy(update={field: RESTRICTIVE_VALUES[field]})` always sets a *real* value on
+`resolved` regardless of what `PERMISSIVE` itself defaults to — so for a normal-polarity field,
+`bool(None)` (an unset `PERMISSIVE`) happens to equal the schema's real permissive `False`, masking
+the gap. `allow_fork_syncing`'s inverted polarity breaks that coincidence: its permissive value is
+`True`, so `PERMISSIVE.allow_fork_syncing` defaulting to `None` (→ `bool(None)` = `False`) collides
+with `RESTRICTIVE_VALUES["allow_fork_syncing"]` also being `False`, and
+`test_field_is_represented_by_branch_protection_backend[allow_fork_syncing]` fails outright — the
+parity guard doing exactly its documented job. Add all four fields explicitly to this file's
+`PERMISSIVE` too, for real (not coincidental) coverage on every field, not just this one:
+
+```python
+PERMISSIVE = BranchPolicy(
+    pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+    status_checks=StatusChecksPolicy(required=[]),
+    signed_commits=False,
+    linear_history=False,
+    allow_force_push=True,
+    allow_deletion=True,
+    enforce_admins=False,
+    required_conversation_resolution=False,
+    lock_branch=False,
+    allow_fork_syncing=True,
+)
+```
+
+Run: `pytest -q` — expect the `allow_fork_syncing` failure to disappear and the count to still read
+149 passed (148 from Tasks 1-4 plus this task's Steps 1, 11, 12, 14 additions).
+
 - [ ] **Step 14: Add coverage in `tests/test_render.py`**
 
 ```python
@@ -1095,7 +1127,15 @@ git commit -m "feat: model allow_fork_syncing, branch_protection-only
 Completes the four branch_protection-only fields (with enforce_admins,
 required_conversation_resolution, lock_branch). Inverted polarity like
 allow_force_push/allow_deletion: GitHub's own default is true (syncing
-allowed), so true/unset is the permissive value here, not false."
+allowed), so true/unset is the permissive value here, not false.
+
+Also fixes tests/test_policies_parity.py's own PERMISSIVE fixture, which
+never got the three earlier fields either -- masked until now because
+model_copy(update=...) always sets a real value on the 'resolved' side,
+so an unset PERMISSIVE's implicit bool(None)==False happened to match
+each earlier field's real permissive default. allow_fork_syncing's
+inverted polarity broke that coincidence and the parity guard caught it,
+exactly as designed."
 ```
 
 ---

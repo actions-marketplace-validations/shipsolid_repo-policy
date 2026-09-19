@@ -20,6 +20,10 @@ PERMISSIVE = BranchPolicy(
     linear_history=False,
     allow_force_push=True,
     allow_deletion=True,
+    enforce_admins=False,
+    required_conversation_resolution=False,
+    lock_branch=False,
+    allow_fork_syncing=True,
 )
 
 RESTRICTIVE_VALUES = {
@@ -35,6 +39,7 @@ RESTRICTIVE_VALUES = {
     "enforce_admins": True,
     "required_conversation_resolution": True,
     "lock_branch": True,
+    "allow_fork_syncing": False,
 }
 
 # signed_commits is deliberately excluded here: for the branch_protection backend it's handled

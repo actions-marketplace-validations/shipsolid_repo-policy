@@ -23,6 +23,11 @@ def test_from_api_hardcodes_lock_branch_false():
     assert rulesets.from_api({"rules": []}).lock_branch is False
 
 
+def test_from_api_hardcodes_allow_fork_syncing_true():
+    assert rulesets.from_api(None).allow_fork_syncing is True
+    assert rulesets.from_api({"rules": []}).allow_fork_syncing is True
+
+
 def test_from_api_none_means_fully_permissive():
     result = rulesets.from_api(None)
     assert result.pull_requests == PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
