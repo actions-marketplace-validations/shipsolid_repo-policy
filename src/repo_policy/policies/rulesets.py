@@ -42,16 +42,19 @@ def from_api(data: dict | None) -> BranchPolicy:
 def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None = None) -> dict:
     """`resolved` must already have every modeled field filled in (see diff.resolve_desired).
     Rulesets are fully owned by repo-policy once named, so this is a full replace of the rules
-    array for every MODELED field -- but strict_required_status_checks_policy has no modeled
-    field (see status_checks.to_ruleset_rule), so `current_raw` (the ruleset's current GET
-    payload, or None on first creation) is threaded through to preserve it instead of resetting
-    it to False on every apply."""
+    array for every MODELED field -- but strict_required_status_checks_policy, `enforcement`
+    (active/evaluate/disabled), and `bypass_actors` have no modeled field (see
+    status_checks.to_ruleset_rule for the first), so `current_raw` (the ruleset's current GET
+    payload, or None on first creation) is threaded through to preserve all three instead of
+    resetting them on every apply. `enforcement` defaults to "active" and `bypass_actors` to an
+    empty list only when there's no current state to read from (first creation)."""
     if resolved.pull_requests is None:
         raise ValueError(
             "resolved.pull_requests must not be None; pass a BranchPolicy produced by "
             "diff.resolve_desired(), which always fills every modeled field"
         )
-    current_rules_by_type = {rule["type"]: rule for rule in (current_raw or {}).get("rules", [])}
+    current_raw = current_raw or {}
+    current_rules_by_type = {rule["type"]: rule for rule in current_raw.get("rules", [])}
     rules: list[dict] = []
 
     pr_rule = pull_requests.to_ruleset_rule(resolved.pull_requests)
@@ -76,7 +79,8 @@ def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None
     return {
         "name": ruleset_name(branch),
         "target": "branch",
-        "enforcement": "active",
+        "enforcement": current_raw.get("enforcement", "active"),
         "conditions": {"ref_name": {"include": [f"refs/heads/{branch}"], "exclude": []}},
         "rules": rules,
+        "bypass_actors": current_raw.get("bypass_actors", []),
     }

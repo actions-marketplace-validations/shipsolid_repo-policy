@@ -103,6 +103,50 @@ def test_to_api_payload_raises_explicit_error_when_pull_requests_unresolved():
         rulesets.to_api_payload("main", unresolved)
 
 
+def test_to_api_payload_preserves_current_enforcement_mode():
+    """enforcement (active/evaluate/disabled) has no modeled field -- a human-set "evaluate"
+    (dry-run) ruleset must not be silently flipped back to "active" by an unrelated apply."""
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=True,
+    )
+    current_raw = {"id": 7, "enforcement": "evaluate", "rules": []}
+    payload = rulesets.to_api_payload("main", resolved, current_raw=current_raw)
+    assert payload["enforcement"] == "evaluate"
+
+
+def test_to_api_payload_defaults_enforcement_active_on_first_creation():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
+    )
+    payload = rulesets.to_api_payload("main", resolved, current_raw=None)
+    assert payload["enforcement"] == "active"
+
+
+def test_to_api_payload_preserves_current_bypass_actors():
+    """bypass_actors has no modeled field either -- must not be silently stripped by an unrelated
+    apply, since ruleset PUT/POST is a full-object replace."""
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=True,
+    )
+    current_raw = {
+        "id": 7,
+        "bypass_actors": [{"actor_id": 1, "actor_type": "Team", "bypass_mode": "always"}],
+        "rules": [],
+    }
+    payload = rulesets.to_api_payload("main", resolved, current_raw=current_raw)
+    assert payload["bypass_actors"] == [{"actor_id": 1, "actor_type": "Team", "bypass_mode": "always"}]
+
+
+def test_to_api_payload_defaults_bypass_actors_empty_on_first_creation():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
+    )
+    payload = rulesets.to_api_payload("main", resolved, current_raw=None)
+    assert payload["bypass_actors"] == []
+
+
 def test_to_api_payload_preserves_current_strict_required_status_checks_policy():
     resolved = BranchPolicy(
         pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
