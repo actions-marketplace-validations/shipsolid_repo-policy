@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from repo_policy.models import BranchPolicy, PullRequestPolicy, StatusChecksPolicy
+from repo_policy.models import BranchPolicy, PullRequestPolicy
 
 ChangeAction = Literal["add", "modify", "remove"]
 
@@ -18,7 +18,10 @@ _FIELDS = (
 
 _SCHEMA_DEFAULTS: dict[str, Any] = {
     "pull_requests": PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
-    "status_checks": StatusChecksPolicy(required=[]),
+    # None, not StatusChecksPolicy(required=[]): branch_protection.from_api / rulesets.from_api
+    # both represent "no status checks configured" as None. The strict default must match that
+    # exact representation, or a fully-compliant permissive branch shows permanent phantom drift.
+    "status_checks": None,
     "signed_commits": False,
     "linear_history": False,
     "allow_force_push": True,

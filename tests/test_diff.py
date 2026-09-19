@@ -69,9 +69,21 @@ def test_resolve_desired_strict_uses_schema_defaults_for_unset_fields():
     )
     resolved = resolve_desired(desired, current, strict=True)
     assert resolved.pull_requests == PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
-    assert resolved.status_checks == StatusChecksPolicy(required=[])
+    assert resolved.status_checks is None
     assert resolved.signed_commits is False
     assert resolved.allow_force_push is True
     assert resolved.allow_deletion is True
     # strict still respects fields the branch DID declare
     assert resolved.linear_history is True
+
+
+def test_strict_mode_reports_no_drift_for_an_already_compliant_permissive_branch():
+    """Regression test: found via live testing against a real repo. A branch with no status
+    checks configured normalizes to status_checks=None (see branch_protection.from_api /
+    rulesets.from_api), not StatusChecksPolicy(required=[]) -- the strict schema default must
+    match that exact representation, or strict mode reports permanent phantom drift and issues
+    an unnecessary API call on every single apply."""
+    desired = PERMISSIVE.model_copy(update={"linear_history": True})
+    current = PERMISSIVE.model_copy(update={"linear_history": True})
+    resolved = resolve_desired(desired, current, strict=True)
+    assert diff(resolved, current) == []
