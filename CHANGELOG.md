@@ -1,6 +1,34 @@
 # CHANGELOG
 
 
+## v0.1.3 (2026-09-19)
+
+### Bug Fixes
+
+- Pin dependency upper bounds to prevent future breaking installs
+  ([`c259eba`](https://github.com/shipsolid/repo-policy/commit/c259eba3180c45e10b6b6dca44b2ab56b7aaaf09))
+
+Runtime dependencies had no upper bound (httpx>=0.27, pyyaml>=6.0, pydantic>=2.0, click>=8.1), so a
+  future major-version release of any of them could silently break installs with no warning. Caps
+  each at its current major version; dev-only deps are left open since they don't affect what ships
+  to consumers.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Continuous Integration
+
+- Run the floating major tag step before the PyPI publish step
+  ([`9e11f36`](https://github.com/shipsolid/repo-policy/commit/9e11f3688a35d9ef1177cab92b9227d465f284bd))
+
+Sequenced after PyPI meant a PyPI failure (which has occurred on every release so far, since trusted
+  publishing was never configured) silently skipped the tag move every time -- confirmed via the
+  last 3 release runs, where 'Move floating major tag' shows as skipped and no v1 tag was ever
+  created. These two steps are independent; the Action's own consumers (uses:
+  shipsolid/repo-policy@v1) must not be blocked by an unrelated PyPI outage.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.1.2 (2026-09-19)
 
 ### Bug Fixes
