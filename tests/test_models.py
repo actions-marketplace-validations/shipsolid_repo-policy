@@ -5,6 +5,7 @@ from repo_policy.models import (
     BranchPolicy,
     PolicyConfig,
     PullRequestPolicy,
+    RepoSettingsPolicy,
     StatusChecksPolicy,
     effective_strict,
 )
@@ -95,3 +96,23 @@ def test_effective_strict_falls_back_to_top_level_default():
 def test_effective_strict_branch_override_wins():
     config = PolicyConfig(version=1, strict=True, branches={"main": BranchPolicy(strict=False)})
     assert effective_strict(config, "main") is False
+
+
+def test_repo_settings_policy_defaults_to_all_unset():
+    policy = RepoSettingsPolicy()
+    assert policy.delete_branch_on_merge is None
+    assert policy.allow_update_branch is None
+
+
+def test_policy_config_repo_settings_defaults_to_none():
+    config = PolicyConfig(version=1, branches={})
+    assert config.repo_settings is None
+
+
+def test_policy_config_parses_repo_settings():
+    config = PolicyConfig(
+        version=1, branches={},
+        repo_settings=RepoSettingsPolicy(delete_branch_on_merge=True, allow_update_branch=False),
+    )
+    assert config.repo_settings.delete_branch_on_merge is True
+    assert config.repo_settings.allow_update_branch is False

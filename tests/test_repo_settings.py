@@ -1,0 +1,46 @@
+from unittest.mock import MagicMock
+
+from repo_policy.models import PolicyConfig, RepoSettingsPolicy
+from repo_policy.repo_settings import apply_repo_settings, plan_repo_settings
+
+
+def test_plan_repo_settings_returns_empty_result_when_section_absent():
+    client = MagicMock()
+    config = PolicyConfig(version=1, branches={})  # no repo_settings declared
+    result = plan_repo_settings(client, config)
+    assert result.changes == []
+    assert result.unavailable == []
+    client.get_repo.assert_not_called()
+
+
+def test_plan_repo_settings_detects_flat_setting_drift():
+    client = MagicMock()
+    client.get_repo.return_value = {"delete_branch_on_merge": False}
+    config = PolicyConfig(
+        version=1, branches={}, repo_settings=RepoSettingsPolicy(delete_branch_on_merge=True)
+    )
+    result = plan_repo_settings(client, config)
+    assert len(result.changes) == 1
+    assert result.changes[0].field == "delete_branch_on_merge"
+
+
+def test_apply_repo_settings_calls_update_when_drift_exists():
+    client = MagicMock()
+    client.get_repo.return_value = {"delete_branch_on_merge": False}
+    config = PolicyConfig(
+        version=1, branches={}, repo_settings=RepoSettingsPolicy(delete_branch_on_merge=True)
+    )
+    result = apply_repo_settings(client, config)
+    assert result.applied is True
+    client.update_repo_settings.assert_called_once_with({"delete_branch_on_merge": True})
+
+
+def test_apply_repo_settings_is_idempotent_when_already_compliant():
+    client = MagicMock()
+    client.get_repo.return_value = {"delete_branch_on_merge": True}
+    config = PolicyConfig(
+        version=1, branches={}, repo_settings=RepoSettingsPolicy(delete_branch_on_merge=True)
+    )
+    result = apply_repo_settings(client, config)
+    assert result.applied is False
+    client.update_repo_settings.assert_not_called()

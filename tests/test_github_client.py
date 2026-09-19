@@ -238,3 +238,22 @@ def test_delete_ruleset_calls_delete(client):
     )
     client.delete_ruleset(5)
     assert route.called
+
+
+@respx.mock
+def test_get_repo(client):
+    respx.get("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(200, json={"default_branch": "main", "delete_branch_on_merge": False})
+    )
+    data = client.get_repo()
+    assert data["default_branch"] == "main"
+
+
+@respx.mock
+def test_update_repo_settings(client):
+    route = respx.patch("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(200, json={"delete_branch_on_merge": True})
+    )
+    data = client.update_repo_settings({"delete_branch_on_merge": True})
+    assert data["delete_branch_on_merge"] is True
+    assert route.calls[0].request.content == b'{"delete_branch_on_merge":true}'

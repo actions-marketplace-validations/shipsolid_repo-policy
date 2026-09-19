@@ -114,6 +114,14 @@ class GitHubClient:
             f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection/required_signatures",
         )
 
+    def get_repo(self) -> dict:
+        response = self._request("GET", f"/repos/{self.owner}/{self.repo}")
+        return _expect_response(response).json()
+
+    def update_repo_settings(self, payload: dict) -> dict:
+        response = self._request("PATCH", f"/repos/{self.owner}/{self.repo}", json=payload)
+        return _expect_response(response).json()
+
     def list_rulesets(self) -> list[dict]:
         results: list[dict] = []
         path: str | None = f"/repos/{self.owner}/{self.repo}/rulesets"

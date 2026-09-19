@@ -1,5 +1,7 @@
 from repo_policy.diff import Change
-from repo_policy.render import render_plan
+from repo_policy.policies.repo_settings import RepoSettingChange
+from repo_policy.render import render_plan, render_repo_settings
+from repo_policy.repo_settings import RepoSettingsResult
 
 
 def test_render_plan_reports_no_changes():
@@ -51,3 +53,16 @@ def test_render_plan_shows_fork_syncing_label():
     changes = [Change(field="allow_fork_syncing", current_value=True, desired_value=False, action="add")]
     output = render_plan("acme/widgets", "main", changes)
     assert "+ Fork syncing" in output
+
+
+def test_render_repo_settings_reports_no_changes():
+    output = render_repo_settings("acme/widgets", RepoSettingsResult())
+    assert "No repo-level setting changes required." in output
+
+
+def test_render_repo_settings_shows_a_change():
+    result = RepoSettingsResult(changes=[
+        RepoSettingChange("delete_branch_on_merge", False, True, "add"),
+    ])
+    output = render_repo_settings("acme/widgets", result)
+    assert "+ Delete branch on merge" in output

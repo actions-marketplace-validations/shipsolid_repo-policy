@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from repo_policy.diff import Change
+from repo_policy.repo_settings import RepoSettingsResult
 
 _SYMBOLS = {"add": "+", "modify": "~", "remove": "-"}
 
@@ -15,6 +16,11 @@ _LABELS = {
     "required_conversation_resolution": "Conversation resolution",
     "lock_branch": "Branch lock",
     "allow_fork_syncing": "Fork syncing",
+}
+
+_REPO_SETTINGS_LABELS = {
+    "delete_branch_on_merge": "Delete branch on merge",
+    "allow_update_branch": "Allow update branch",
 }
 
 
@@ -37,5 +43,27 @@ def render_plan(repo: str, branch: str, changes: list[Change]) -> str:
     else:
         noun = "change" if len(changes) == 1 else "changes"
         lines.append(f"{len(changes)} {noun} required.")
+
+    return "\n".join(lines)
+
+
+def render_repo_settings(repo: str, result: RepoSettingsResult) -> str:
+    lines = [f"Repository: {repo}", "Repo-level settings:", ""]
+
+    for change in result.changes:
+        symbol = _SYMBOLS[change.action]
+        label = _REPO_SETTINGS_LABELS.get(change.field, change.field)
+        lines.append(f"{symbol} {label:<28} {change.current_value} → {change.desired_value}")
+
+    for field_name in result.unavailable:
+        label = _REPO_SETTINGS_LABELS.get(field_name, field_name)
+        lines.append(f"? {label:<28} unavailable on this repository")
+
+    lines.append("")
+    if not result.changes and not result.unavailable:
+        lines.append("No repo-level setting changes required.")
+    else:
+        noun = "change" if len(result.changes) == 1 else "changes"
+        lines.append(f"{len(result.changes)} {noun} required.")
 
     return "\n".join(lines)

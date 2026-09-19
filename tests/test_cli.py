@@ -138,6 +138,50 @@ def test_audit_reports_usage_error_when_no_token_configured(mock_client_cls, mon
     mock_client_cls.assert_not_called()
 
 
+@patch("repo_policy.cli.GitHubClient")
+def test_audit_ignores_repo_settings_when_no_branches_declared_and_section_absent(mock_client_cls):
+    """policy_no_requirements.yml has branches but no repo_settings key -- confirms zero extra
+    API calls for every existing policy.yml written before this feature existed."""
+    mock_client = mock_client_cls.return_value.__enter__.return_value
+    mock_client.get_branch_protection.return_value = None
+    mock_client.get_required_signatures.return_value = False
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["audit", "--config", "tests/fixtures/policy_no_requirements.yml", "--repo", "acme/widgets", "--token", "t"],
+    )
+    assert result.exit_code == 0
+    mock_client.get_repo.assert_not_called()
+
+
+@patch("repo_policy.cli.GitHubClient")
+def test_plan_renders_repo_settings_drift(mock_client_cls):
+    mock_client = mock_client_cls.return_value.__enter__.return_value
+    mock_client.get_repo.return_value = {"delete_branch_on_merge": False}
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["plan", "--config", "tests/fixtures/policy_repo_settings.yml", "--repo", "acme/widgets", "--token", "t"],
+    )
+    assert result.exit_code == 1
+    assert "Repo-level settings:" in result.output
+    assert "+ Delete branch on merge" in result.output
+
+
+@patch("repo_policy.cli.GitHubClient")
+def test_apply_applies_repo_settings_drift(mock_client_cls):
+    mock_client = mock_client_cls.return_value.__enter__.return_value
+    mock_client.get_repo.return_value = {"delete_branch_on_merge": False}
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["apply", "--config", "tests/fixtures/policy_repo_settings.yml", "--repo", "acme/widgets", "--token", "t"],
+    )
+    assert result.exit_code == 0
+    mock_client.update_repo_settings.assert_called_once_with({"delete_branch_on_merge": True})
+    assert "repo settings: applied 1 change(s)" in result.output
+
+
 @patch("repo_policy.cli.subprocess.run", side_effect=FileNotFoundError("git not found"))
 @patch("repo_policy.cli.GitHubClient")
 def test_audit_reports_usage_error_when_git_binary_is_missing(mock_client_cls, mock_run, tmp_path, monkeypatch):

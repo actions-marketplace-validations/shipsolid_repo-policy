@@ -60,10 +60,31 @@ class BranchPolicy(BaseModel):
         return self
 
 
+class RepoSettingsPolicy(BaseModel):
+    delete_branch_on_merge: bool | None = None
+    allow_update_branch: bool | None = None
+    vulnerability_alerts: bool | None = None
+    automated_security_fixes: bool | None = None
+    private_vulnerability_reporting: bool | None = None
+    secret_scanning: bool | None = None
+    secret_scanning_push_protection: bool | None = None
+
+    @model_validator(mode="after")
+    def _automated_security_fixes_requires_vulnerability_alerts(self) -> RepoSettingsPolicy:
+        if self.automated_security_fixes is True and self.vulnerability_alerts is not True:
+            raise ValueError(
+                "automated_security_fixes: true requires vulnerability_alerts: true to also be "
+                "declared -- GitHub rejects enabling Dependabot security updates before Dependabot "
+                "alerts are enabled"
+            )
+        return self
+
+
 class PolicyConfig(BaseModel):
     version: int
     strict: bool = False
     branches: dict[str, BranchPolicy]
+    repo_settings: RepoSettingsPolicy | None = None
 
     @field_validator("version")
     @classmethod
