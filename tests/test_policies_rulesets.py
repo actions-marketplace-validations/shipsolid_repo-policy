@@ -13,6 +13,11 @@ def test_from_api_hardcodes_enforce_admins_false():
     assert rulesets.from_api({"rules": []}).enforce_admins is False
 
 
+def test_from_api_hardcodes_required_conversation_resolution_false():
+    assert rulesets.from_api(None).required_conversation_resolution is False
+    assert rulesets.from_api({"rules": []}).required_conversation_resolution is False
+
+
 def test_from_api_none_means_fully_permissive():
     result = rulesets.from_api(None)
     assert result.pull_requests == PullRequestPolicy(required=False, approvals=0, code_owner_review=False)

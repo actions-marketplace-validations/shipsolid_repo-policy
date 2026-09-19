@@ -33,6 +33,7 @@ RESTRICTIVE_VALUES = {
     "allow_force_push": False,
     "allow_deletion": False,
     "enforce_admins": True,
+    "required_conversation_resolution": True,
 }
 
 # signed_commits is deliberately excluded here: for the branch_protection backend it's handled

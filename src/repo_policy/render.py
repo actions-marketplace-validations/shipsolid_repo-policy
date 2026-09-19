@@ -12,6 +12,7 @@ _LABELS = {
     "allow_force_push": "Force pushes",
     "allow_deletion": "Branch deletion",
     "enforce_admins": "Admin enforcement",
+    "required_conversation_resolution": "Conversation resolution",
 }
 
 

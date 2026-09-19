@@ -32,3 +32,10 @@ def test_render_plan_shows_enforce_admins_label():
     changes = [Change(field="enforce_admins", current_value=False, desired_value=True, action="add")]
     output = render_plan("acme/widgets", "main", changes)
     assert "+ Admin enforcement" in output
+
+
+def test_render_plan_shows_conversation_resolution_label():
+    changes = [Change(field="required_conversation_resolution", current_value=False,
+                       desired_value=True, action="add")]
+    output = render_plan("acme/widgets", "main", changes)
+    assert "+ Conversation resolution" in output

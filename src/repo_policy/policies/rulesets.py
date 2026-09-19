@@ -9,9 +9,10 @@ def ruleset_name(branch: str) -> str:
 
 
 def from_api(data: dict | None) -> BranchPolicy:
-    # enforce_admins has no GitHub Rulesets equivalent and is rejected for enforcement: ruleset by
-    # BranchPolicy's model validator (models.py) -- hardcoded here so resolve_desired()/diff()
-    # always report zero drift for it on a ruleset-enforced branch, in every mode.
+    # enforce_admins/required_conversation_resolution have no GitHub Rulesets equivalent and are
+    # rejected for enforcement: ruleset by BranchPolicy's model validator (models.py) -- hardcoded
+    # here so resolve_desired()/diff() always report zero drift for them on a ruleset-enforced
+    # branch, in every mode.
     if data is None:
         return BranchPolicy(
             enforcement="ruleset",
@@ -22,6 +23,7 @@ def from_api(data: dict | None) -> BranchPolicy:
             allow_force_push=True,
             allow_deletion=True,
             enforce_admins=False,
+            required_conversation_resolution=False,
         )
     rules_by_type = {rule["type"]: rule for rule in data.get("rules", [])}
     return BranchPolicy(
@@ -33,6 +35,7 @@ def from_api(data: dict | None) -> BranchPolicy:
         allow_force_push="non_fast_forward" not in rules_by_type,
         allow_deletion="deletion" not in rules_by_type,
         enforce_admins=False,
+        required_conversation_resolution=False,
     )
 
 

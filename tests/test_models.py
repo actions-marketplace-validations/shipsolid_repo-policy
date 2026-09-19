@@ -37,6 +37,16 @@ def test_branch_policy_allows_ruleset_enforcement_when_enforce_admins_unset():
     assert policy.enforce_admins is None
 
 
+def test_branch_policy_rejects_required_conversation_resolution_under_ruleset():
+    with pytest.raises(ValidationError, match="required_conversation_resolution"):
+        BranchPolicy(enforcement="ruleset", required_conversation_resolution=True)
+
+
+def test_branch_policy_allows_required_conversation_resolution_under_branch_protection():
+    policy = BranchPolicy(enforcement="branch_protection", required_conversation_resolution=True)
+    assert policy.required_conversation_resolution is True
+
+
 def test_policy_config_parses_nested_branches():
     config = PolicyConfig(
         version=1,

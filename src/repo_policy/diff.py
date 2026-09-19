@@ -15,6 +15,7 @@ _FIELDS = (
     "allow_force_push",
     "allow_deletion",
     "enforce_admins",
+    "required_conversation_resolution",
 )
 
 _SCHEMA_DEFAULTS: dict[str, Any] = {
@@ -28,6 +29,7 @@ _SCHEMA_DEFAULTS: dict[str, Any] = {
     "allow_force_push": True,
     "allow_deletion": True,
     "enforce_admins": False,
+    "required_conversation_resolution": False,
 }
 
 # allow_force_push/allow_deletion have inverted polarity vs. every other field: False means a
