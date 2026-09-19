@@ -50,7 +50,7 @@ def test_render_plan_shows_lock_branch_label():
 
 
 def test_render_plan_shows_fork_syncing_label():
-    changes = [Change(field="allow_fork_syncing", current_value=True, desired_value=False, action="add")]
+    changes = [Change(field="allow_fork_syncing", current_value=False, desired_value=True, action="add")]
     output = render_plan("acme/widgets", "main", changes)
     assert "+ Fork syncing" in output
 

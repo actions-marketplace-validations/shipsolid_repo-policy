@@ -23,7 +23,7 @@ PERMISSIVE = BranchPolicy(
     enforce_admins=False,
     required_conversation_resolution=False,
     lock_branch=False,
-    allow_fork_syncing=True,
+    allow_fork_syncing=False,
     clear_restrictions=True,
 )
 
@@ -40,7 +40,7 @@ RESTRICTIVE_VALUES = {
     "enforce_admins": True,
     "required_conversation_resolution": True,
     "lock_branch": True,
-    "allow_fork_syncing": False,
+    "allow_fork_syncing": True,
     "clear_restrictions": False,
 }
 

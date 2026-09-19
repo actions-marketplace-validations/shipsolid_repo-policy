@@ -25,8 +25,7 @@ class StatusChecksPolicy(BaseModel):
 # allowed; `enforce_admins: true` is a real restriction with no ruleset equivalent and is rejected.
 _RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
     "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
-    "allow_fork_syncing": True,  # inverted polarity: True is the permissive value here
-    "clear_restrictions": True,  # True is the permissive value here too: no restriction in effect
+    "allow_fork_syncing": False, "clear_restrictions": True,
 }
 
 

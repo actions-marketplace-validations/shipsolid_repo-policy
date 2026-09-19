@@ -26,7 +26,7 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
             enforce_admins=False,
             required_conversation_resolution=False,
             lock_branch=False,
-            allow_fork_syncing=True,
+            allow_fork_syncing=False,
             clear_restrictions=True,
         )
     return BranchPolicy(
@@ -40,7 +40,7 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
         enforce_admins=_unwrap(data.get("enforce_admins"), False),
         required_conversation_resolution=_unwrap(data.get("required_conversation_resolution"), False),
         lock_branch=_unwrap(data.get("lock_branch"), False),
-        allow_fork_syncing=_unwrap(data.get("allow_fork_syncing"), True),
+        allow_fork_syncing=_unwrap(data.get("allow_fork_syncing"), False),
         clear_restrictions=data.get("restrictions") is None,
     )
 

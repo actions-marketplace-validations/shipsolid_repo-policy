@@ -34,15 +34,18 @@ _SCHEMA_DEFAULTS: dict[str, Any] = {
     "enforce_admins": False,
     "required_conversation_resolution": False,
     "lock_branch": False,
-    "allow_fork_syncing": True,
+    "allow_fork_syncing": False,
     "clear_restrictions": True,
 }
 
-# allow_force_push/allow_deletion/allow_fork_syncing have inverted polarity vs. every other field:
-# False means a restriction IS present (force push blocked / fork syncing disallowed), True means
-# no restriction — the opposite of fields like linear_history, where False/empty means no rule
-# exists.
-_INVERTED_FIELDS = {"allow_force_push", "allow_deletion", "allow_fork_syncing"}
+# allow_force_push/allow_deletion have inverted polarity vs. every other field: False means a
+# restriction IS present (force push blocked), True means no restriction — the opposite of
+# fields like linear_history, where False/empty means no rule exists. allow_fork_syncing is NOT
+# inverted, despite superficially resembling these two -- GitHub only honors
+# allow_fork_syncing=true when lock_branch=true is also set (see models.py's
+# _allow_fork_syncing_requires_lock_branch validator), so False/unset is the safe, always-stable
+# default here, not True. Confirmed via live-repo verification -- see docs/test-strategy.md.
+_INVERTED_FIELDS = {"allow_force_push", "allow_deletion"}
 
 
 @dataclass(frozen=True)
