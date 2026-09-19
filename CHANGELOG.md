@@ -1,7 +1,108 @@
 # CHANGELOG
 
 
+## v0.1.1 (2026-09-19)
+
+
 ## v0.1.0 (2026-09-19)
+
+### Bug Fixes
+
+- Catch missing git binary in _resolve_repo
+  ([`3337879`](https://github.com/shipsolid/repo-policy/commit/33378798cde8acd8de36573b406fcd8ba09a2346))
+
+subprocess.run raised an uncaught FileNotFoundError when git isn't on PATH (plausible for the
+  pip-installed CLI run outside the Docker Action) and no --repo/GITHUB_REPOSITORY was supplied,
+  instead of the intended click.ClickException.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Fail fast with a clear error when no GitHub token is configured
+  ([`ec113c5`](https://github.com/shipsolid/repo-policy/commit/ec113c552fcf599551ed6289a6c39423a02866e9))
+
+_resolve_token silently fell back to an empty string, so a missing token sent 'Authorization: Bearer
+  ' on every API call and surfaced as a generic 401 deep inside _request instead of an actionable
+  message before any request was made.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Paginate list_rulesets() using GitHub's Link header
+  ([`2c309da`](https://github.com/shipsolid/repo-policy/commit/2c309daa412a950275e4faa476c0b8141790da54))
+
+Rulesets past page 1 were invisible to find_ruleset_by_name and prune_rulesets, since
+  list_rulesets() issued a single unpaginated GET. Now requests per_page=100 and follows rel="next"
+  links until exhausted.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve unmodeled review/status-check fields on apply
+  ([`775888f`](https://github.com/shipsolid/repo-policy/commit/775888f0b6e2503ec2fa0e8667bee5988c5671d7))
+
+pull_requests.to_branch_protection() and status_checks.to_branch_protection() hardcoded
+  dismiss_stale_reviews, require_last_push_approval, and required_status_checks.strict to False on
+  every call. Since apply_branch rebuilds these nested objects in full whenever ANY declared field
+  changes, a targeted edit to e.g. allow_force_push silently reset any of these three settings a
+  human had configured manually on GitHub, contradicting this module's own docstring and the
+  README's managed-scope promise.
+
+Both functions now take the current GET payload and read these unmodeled fields through from it
+  (falling back to False only on first-ever creation), matching the pattern already used for
+  enforce_admins/restrictions.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Replace bare assert with explicit errors in prod code paths
+  ([`46f08a0`](https://github.com/shipsolid/repo-policy/commit/46f08a0a0c192b43a02db214d22844d2daca710a))
+
+Bare asserts are stripped entirely under python -O, silently removing the invariant checks they were
+  meant to enforce -- and this project's own AGENTS.md convention calls for explicit error handling.
+  Replaces: - 5 sites in GitHubClient (put/list/get/create/update) with a shared _expect_response()
+  helper that raises GitHubAPIError. - 2 sites in branch_protection.py/rulesets.py's
+  to_api_payload() with a ValueError naming the violated contract (resolved.pull_requests must come
+  from diff.resolve_desired()).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Retry HTTP 429 responses in GitHubClient
+  ([`4c538e1`](https://github.com/shipsolid/repo-policy/commit/4c538e1c25f20d265c364baa936b87ad2a53ee89))
+
+GitHub's secondary rate limiting and abuse-detection responses return 429, which the retry predicate
+  never matched (it only checked 403-with- 'rate limit'-text and >=500). A 429 raised GitHubAPIError
+  immediately instead of backing off -- exactly the case the retry loop exists for.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Share one ruleset-list fetch across apply/audit/prune
+  ([`ae23abb`](https://github.com/shipsolid/repo-policy/commit/ae23abb87acda3664dea04f4f3e502b6fbe6c4e6))
+
+find_ruleset_by_name() previously called list_rulesets() fresh on every invocation, so a single
+  'repo-policy apply' run against N ruleset-enforced branches issued N+1 identical GET /rulesets
+  calls, and a strict-mode apply issued yet another for prune_rulesets right after. Added
+  prefetch_rulesets() (computes the list once, only when actually needed) and threaded an optional
+  rulesets_cache through fetch_current/plan_branch/apply_branch/ apply_all/prune_rulesets/audit_all;
+  the apply CLI command now fetches once and shares it with both apply_all and prune_rulesets. Also
+  closes a real gap: strict-mode apply had zero test coverage before this commit.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Treat empty INPUT_CONFIG/INPUT_MODE as unset in the Action entrypoint
+  ([`fa4f81d`](https://github.com/shipsolid/repo-policy/commit/fa4f81d515b27a0268a3e5a8be2cd204d5535c54))
+
+os.environ.get(key, default) only falls back when the env var is entirely absent; GitHub Actions
+  sets INPUT_* vars to whatever the caller's 'with:' value resolves to, including an explicit empty
+  string, which passed straight through as a confusing failure instead of honoring action.yml's
+  documented defaults. Also adds the first test coverage for entrypoint.py, which had none.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Validate --repo format before splitting owner/name
+  ([`058a8b1`](https://github.com/shipsolid/repo-policy/commit/058a8b1c41e0324bf27deb06047fb7e87dfaa59c))
+
+A repo string with no '/' (a malformed --repo flag or GITHUB_REPOSITORY) crashed audit/plan/apply
+  with an unhandled ValueError from the tuple unpack, duplicated across two call sites. Extracted a
+  _split_repo() helper that raises a clean click.ClickException instead.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 
 ### Chores
 
@@ -115,6 +216,17 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 
 ### Testing
+
+- Add cross-backend field-parity guard
+  ([`d63a39c`](https://github.com/shipsolid/repo-policy/commit/d63a39c68b064ed32dac606c0e9bef46a35cf5ca))
+
+branch_protection.py and rulesets.py each hand-write their own payload translation with no shared
+  source of truth between them -- the structural reason the previous commit's clobber bug existed in
+  only one backend with zero test coverage. A full unification refactor is more risk than this
+  warrants right now; this parametrized test is the cheaper guardrail: it fails loudly if a future
+  field is wired into only one backend.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 
 - Add idempotency guarantee for apply
   ([`102505c`](https://github.com/shipsolid/repo-policy/commit/102505c1656308bb18784beb0327eed7f6f4b961))
