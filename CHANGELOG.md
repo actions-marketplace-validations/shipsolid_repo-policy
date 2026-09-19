@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.1.2 (2026-09-19)
+
+### Bug Fixes
+
+- Strict mode reported phantom drift for unconfigured status checks
+  ([`90b2576`](https://github.com/shipsolid/repo-policy/commit/90b25761d978aeab0bc71a5e81361f7e84399f02))
+
+Found via live verification against a real repo (shipsolid/playground), not the earlier mocked
+  audit. diff.py's strict-mode schema default for status_checks was StatusChecksPolicy(required=[]),
+  but branch_protection .from_api() and rulesets.from_api() both represent 'no status checks
+  configured' as None. The mismatch meant any fully-compliant branch under strict: true showed
+  permanent 1-change drift and triggered an unnecessary
+
+PUT on every single apply -- confirmed live: 'repo-policy plan' kept reporting 'Required status
+  checks None -> required=[]' against a repo that had no status checks configured at all, before and
+  after apply.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.1.1 (2026-09-19)
 
 
