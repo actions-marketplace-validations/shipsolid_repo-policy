@@ -60,11 +60,12 @@ class GitHubClient:
         path: str,
         *,
         json: dict | None = None,
+        params: dict | None = None,
         allow_404: bool = False,
     ) -> httpx.Response | None:
         attempt = 0
         while True:
-            response = self._client.request(method, path, json=json)
+            response = self._client.request(method, path, json=json, params=params)
 
             if response.status_code == 404 and allow_404:
                 return None
@@ -114,8 +115,16 @@ class GitHubClient:
         )
 
     def list_rulesets(self) -> list[dict]:
-        response = self._request("GET", f"/repos/{self.owner}/{self.repo}/rulesets")
-        return _expect_response(response).json()
+        results: list[dict] = []
+        path: str | None = f"/repos/{self.owner}/{self.repo}/rulesets"
+        params: dict | None = {"per_page": 100}
+        while path is not None:
+            response = _expect_response(self._request("GET", path, params=params))
+            results.extend(response.json())
+            next_link = response.links.get("next")
+            path = next_link["url"] if next_link else None
+            params = None  # the next-page URL already carries its own query string
+        return results
 
     def get_ruleset(self, ruleset_id: int) -> dict:
         response = self._request("GET", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}")

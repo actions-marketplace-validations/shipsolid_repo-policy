@@ -155,6 +155,22 @@ def test_list_rulesets_returns_summaries(client):
 
 
 @respx.mock
+def test_list_rulesets_follows_pagination_link_header(client):
+    next_url = "https://api.github.com/repos/acme/widgets/rulesets?per_page=100&page=2"
+    route = respx.get("https://api.github.com/repos/acme/widgets/rulesets")
+    route.side_effect = [
+        httpx.Response(
+            200,
+            json=[{"id": 1, "name": "page-one"}],
+            headers={"Link": f'<{next_url}>; rel="next"'},
+        ),
+        httpx.Response(200, json=[{"id": 2, "name": "page-two"}]),
+    ]
+    assert client.list_rulesets() == [{"id": 1, "name": "page-one"}, {"id": 2, "name": "page-two"}]
+    assert route.call_count == 2
+
+
+@respx.mock
 def test_get_ruleset_returns_full_detail(client):
     respx.get("https://api.github.com/repos/acme/widgets/rulesets/1").mock(
         return_value=httpx.Response(200, json={"id": 1, "name": "repo-policy:main", "rules": []})
