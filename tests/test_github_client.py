@@ -98,6 +98,20 @@ def test_request_retries_on_429_then_succeeds(client):
     assert route.call_count == 2
 
 
+def test_close_does_not_close_an_injected_client():
+    injected = httpx.Client()
+    injected_owner = GitHubClient(token="t", owner="acme", repo="widgets", client=injected)
+    injected_owner.close()
+    assert injected.is_closed is False
+    injected.close()
+
+
+def test_close_closes_a_client_it_created_itself():
+    self_owned = GitHubClient(token="t", owner="acme", repo="widgets")
+    self_owned.close()
+    assert self_owned._client.is_closed is True
+
+
 def test_expect_response_raises_explicit_error_on_none():
     with pytest.raises(GitHubAPIError, match="unexpectedly returned no response"):
         _expect_response(None)
@@ -383,6 +397,14 @@ def test_get_private_vulnerability_reporting_unavailable_via_404(client):
         return_value=httpx.Response(404)
     )
     assert client.get_private_vulnerability_reporting() is None
+
+
+@respx.mock
+def test_get_private_vulnerability_reporting_defaults_false_when_enabled_key_missing(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    assert client.get_private_vulnerability_reporting() is False
 
 
 @respx.mock

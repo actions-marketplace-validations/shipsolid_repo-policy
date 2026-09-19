@@ -31,10 +31,13 @@ class GitHubClient:
         max_retries: int = 3,
         backoff_seconds: float = 1.0,
     ) -> None:
+        """If `client` is provided, it is used as-is and `token`/`base_url`/`timeout` are ignored
+        for constructing it -- the caller owns that client's auth headers and lifecycle."""
         self.owner = owner
         self.repo = repo
         self._max_retries = max_retries
         self._backoff_seconds = backoff_seconds
+        self._owns_client = client is None
         self._client = client or httpx.Client(
             base_url=base_url,
             headers={
@@ -46,7 +49,8 @@ class GitHubClient:
         )
 
     def close(self) -> None:
-        self._client.close()
+        if self._owns_client:
+            self._client.close()
 
     def __enter__(self) -> GitHubClient:  # noqa: PYI034 (Self needs Python 3.11+; we target 3.10+)
         return self
@@ -160,7 +164,7 @@ class GitHubClient:
             "GET", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting",
             allow_404=True, allow_422=True,
         )
-        return bool(response.json().get("enabled", True)) if response is not None else None
+        return bool(response.json().get("enabled", False)) if response is not None else None
 
     def enable_private_vulnerability_reporting(self) -> bool:
         """Returns False (meaning unavailable) on 422; True on success."""
