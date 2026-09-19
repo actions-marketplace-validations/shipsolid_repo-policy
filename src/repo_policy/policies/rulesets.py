@@ -35,7 +35,11 @@ def to_api_payload(branch: str, resolved: BranchPolicy) -> dict:
     """`resolved` must already have every modeled field filled in (see diff.resolve_desired).
     Rulesets are fully owned by repo-policy once named, so this is a full replace of the rules
     array — there are no unmodeled fields to preserve, unlike branch_protection.to_api_payload."""
-    assert resolved.pull_requests is not None
+    if resolved.pull_requests is None:
+        raise ValueError(
+            "resolved.pull_requests must not be None; pass a BranchPolicy produced by "
+            "diff.resolve_desired(), which always fills every modeled field"
+        )
     rules: list[dict] = []
 
     pr_rule = pull_requests.to_ruleset_rule(resolved.pull_requests)

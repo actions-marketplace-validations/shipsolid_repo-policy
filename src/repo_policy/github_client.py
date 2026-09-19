@@ -11,6 +11,15 @@ class GitHubAPIError(Exception):
         self.status_code = status_code
 
 
+def _expect_response(response: httpx.Response | None) -> httpx.Response:
+    """_request() only returns None when called with allow_404=True; every call site below
+    omits that flag, so None here means _request's contract was violated. Raising explicitly
+    (rather than a bare assert, which python -O strips entirely) keeps that guarantee real."""
+    if response is None:
+        raise GitHubAPIError("GitHubClient._request unexpectedly returned no response")
+    return response
+
+
 class GitHubClient:
     def __init__(
         self,
@@ -87,8 +96,7 @@ class GitHubClient:
         response = self._request(
             "PUT", f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection", json=payload
         )
-        assert response is not None
-        return response.json()
+        return _expect_response(response).json()
 
     def get_required_signatures(self, branch: str) -> bool:
         response = self._request(
@@ -107,13 +115,11 @@ class GitHubClient:
 
     def list_rulesets(self) -> list[dict]:
         response = self._request("GET", f"/repos/{self.owner}/{self.repo}/rulesets")
-        assert response is not None
-        return response.json()
+        return _expect_response(response).json()
 
     def get_ruleset(self, ruleset_id: int) -> dict:
         response = self._request("GET", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}")
-        assert response is not None
-        return response.json()
+        return _expect_response(response).json()
 
     def find_ruleset_by_name(self, name: str) -> dict | None:
         for summary in self.list_rulesets():
@@ -123,15 +129,13 @@ class GitHubClient:
 
     def create_ruleset(self, payload: dict) -> dict:
         response = self._request("POST", f"/repos/{self.owner}/{self.repo}/rulesets", json=payload)
-        assert response is not None
-        return response.json()
+        return _expect_response(response).json()
 
     def update_ruleset(self, ruleset_id: int, payload: dict) -> dict:
         response = self._request(
             "PUT", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}", json=payload
         )
-        assert response is not None
-        return response.json()
+        return _expect_response(response).json()
 
     def delete_ruleset(self, ruleset_id: int) -> None:
         self._request("DELETE", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}")

@@ -40,7 +40,11 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
     this only reads `current_raw` for the two fields the v1 schema doesn't model but the PUT
     endpoint requires (`enforce_admins`, `restrictions`), preserving whatever is already there."""
     current_raw = current_raw or {}
-    assert resolved.pull_requests is not None
+    if resolved.pull_requests is None:
+        raise ValueError(
+            "resolved.pull_requests must not be None; pass a BranchPolicy produced by "
+            "diff.resolve_desired(), which always fills every modeled field"
+        )
     return {
         "enforce_admins": _unwrap(current_raw.get("enforce_admins"), False),
         "restrictions": current_raw.get("restrictions"),

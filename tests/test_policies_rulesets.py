@@ -1,3 +1,5 @@
+import pytest
+
 from repo_policy.models import BranchPolicy, PullRequestPolicy, StatusChecksPolicy
 from repo_policy.policies import rulesets
 
@@ -68,3 +70,9 @@ def test_to_api_payload_omits_rules_for_permissive_fields():
     )
     payload = rulesets.to_api_payload("main", resolved)
     assert payload["rules"] == []
+
+
+def test_to_api_payload_raises_explicit_error_when_pull_requests_unresolved():
+    unresolved = BranchPolicy(pull_requests=None)
+    with pytest.raises(ValueError, match="pull_requests"):
+        rulesets.to_api_payload("main", unresolved)

@@ -1,3 +1,5 @@
+import pytest
+
 from repo_policy.models import BranchPolicy, PullRequestPolicy, StatusChecksPolicy
 from repo_policy.policies import branch_protection
 
@@ -87,3 +89,9 @@ def test_to_api_payload_preserves_unmodeled_nested_review_and_check_fields():
     assert payload["required_pull_request_reviews"]["dismiss_stale_reviews"] is True
     assert payload["required_pull_request_reviews"]["require_last_push_approval"] is True
     assert payload["required_status_checks"]["strict"] is True
+
+
+def test_to_api_payload_raises_explicit_error_when_pull_requests_unresolved():
+    unresolved = BranchPolicy(pull_requests=None)
+    with pytest.raises(ValueError, match="pull_requests"):
+        branch_protection.to_api_payload(unresolved, current_raw=None)

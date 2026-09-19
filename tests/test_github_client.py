@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from repo_policy.github_client import GitHubAPIError, GitHubClient
+from repo_policy.github_client import GitHubAPIError, GitHubClient, _expect_response
 
 
 @pytest.fixture
@@ -74,6 +74,16 @@ def test_request_retries_on_429_then_succeeds(client):
     response = client._request("GET", "/repos/acme/widgets/rate-limited")
     assert response.json() == {"ok": True}
     assert route.call_count == 2
+
+
+def test_expect_response_raises_explicit_error_on_none():
+    with pytest.raises(GitHubAPIError, match="unexpectedly returned no response"):
+        _expect_response(None)
+
+
+def test_expect_response_returns_response_unchanged():
+    response = httpx.Response(200, json={"ok": True})
+    assert _expect_response(response) is response
 
 
 @respx.mock
