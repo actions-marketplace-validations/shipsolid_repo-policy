@@ -52,6 +52,26 @@ def test_to_api_payload_builds_full_replace_body():
     assert payload["allow_deletions"] is False
 
 
+def test_to_api_payload_preserves_current_block_creations():
+    """block_creations has no modeled field -- a human-enabled "restrict who can create matching
+    branches" must survive a full-object PUT triggered by an unrelated, modeled field changing."""
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=True,
+    )
+    current_raw = {"block_creations": {"enabled": True}}
+    payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
+    assert payload["block_creations"] is True
+
+
+def test_to_api_payload_defaults_block_creations_false_on_first_creation():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
+    )
+    payload = branch_protection.to_api_payload(resolved, current_raw=None)
+    assert payload["block_creations"] is False
+
+
 def test_to_api_payload_preserves_restrictions_from_current_state():
     """restrictions is the one PUT-required field the v1 schema still doesn't model. GitHub's GET
     response shapes restrictions.users/teams/apps as arrays of full objects (login/slug plus

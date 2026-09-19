@@ -56,7 +56,9 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
     not as an arbitrary user/team/app allowlist, since repo-policy has no schema for declaring one
     and the sibling tool this field closes the gap against (see commit 9abd10a, "model
     clear_restrictions, closing the last repo_security field gap") never sets one either, only
-    ever clears it."""
+    ever clears it. `block_creations` has no modeled field at all -- read through from
+    `current_raw` the same way status_checks.to_branch_protection's `strict` is, so it isn't
+    silently reset to False by an unrelated declared change."""
     current_raw = current_raw or {}
     if resolved.pull_requests is None:
         raise ValueError(
@@ -65,6 +67,7 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
         )
     return {
         "enforce_admins": bool(resolved.enforce_admins),
+        "block_creations": _unwrap(current_raw.get("block_creations"), False),
         "restrictions": (
             None if resolved.clear_restrictions
             else _restrictions_payload(current_raw.get("restrictions"))
