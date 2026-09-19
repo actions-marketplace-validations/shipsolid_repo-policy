@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+import time
+
+import httpx
+
+
+class GitHubAPIError(Exception):
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class GitHubClient:
+    def __init__(
+        self,
+        token: str,
+        owner: str,
+        repo: str,
+        base_url: str = "https://api.github.com",
+        client: httpx.Client | None = None,
+        max_retries: int = 3,
+        backoff_seconds: float = 1.0,
+    ) -> None:
+        self.owner = owner
+        self.repo = repo
+        self._max_retries = max_retries
+        self._backoff_seconds = backoff_seconds
+        self._client = client or httpx.Client(
+            base_url=base_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            timeout=30.0,
+        )
+
+    def close(self) -> None:
+        self._client.close()
+
+    def __enter__(self) -> "GitHubClient":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict | None = None,
+        allow_404: bool = False,
+    ) -> httpx.Response | None:
+        attempt = 0
+        while True:
+            response = self._client.request(method, path, json=json)
+
+            if response.status_code == 404 and allow_404:
+                return None
+            if response.status_code < 400:
+                return response
+
+            is_rate_limited = response.status_code == 403 and "rate limit" in response.text.lower()
+            is_retryable = is_rate_limited or response.status_code >= 500
+
+            if is_retryable and attempt < self._max_retries:
+                time.sleep(self._backoff_seconds * (2**attempt))
+                attempt += 1
+                continue
+
+            raise GitHubAPIError(
+                f"GitHub API error {response.status_code} on {method} {path}: {response.text}",
+                status_code=response.status_code,
+            )
