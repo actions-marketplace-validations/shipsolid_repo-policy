@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -17,13 +17,13 @@ class StatusChecksPolicy(BaseModel):
 
 class BranchPolicy(BaseModel):
     enforcement: Literal["branch_protection", "ruleset"] = "branch_protection"
-    strict: Optional[bool] = None
-    pull_requests: Optional[PullRequestPolicy] = None
-    status_checks: Optional[StatusChecksPolicy] = None
-    signed_commits: Optional[bool] = None
-    linear_history: Optional[bool] = None
-    allow_force_push: Optional[bool] = None
-    allow_deletion: Optional[bool] = None
+    strict: bool | None = None
+    pull_requests: PullRequestPolicy | None = None
+    status_checks: StatusChecksPolicy | None = None
+    signed_commits: bool | None = None
+    linear_history: bool | None = None
+    allow_force_push: bool | None = None
+    allow_deletion: bool | None = None
 
 
 class PolicyConfig(BaseModel):

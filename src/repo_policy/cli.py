@@ -32,8 +32,7 @@ def _resolve_repo(repo: str | None) -> str:
         ["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=False
     )
     url = result.stdout.strip()
-    if url.endswith(".git"):
-        url = url[: -len(".git")]
+    url = url.removesuffix(".git")
     for separator in ("github.com:", "github.com/"):
         if separator in url:
             return url.split(separator, 1)[1]

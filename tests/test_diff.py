@@ -1,5 +1,5 @@
-from repo_policy.models import BranchPolicy, PullRequestPolicy, StatusChecksPolicy
 from repo_policy.diff import diff, resolve_desired
+from repo_policy.models import BranchPolicy, PullRequestPolicy, StatusChecksPolicy
 
 PERMISSIVE = BranchPolicy(
     pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),

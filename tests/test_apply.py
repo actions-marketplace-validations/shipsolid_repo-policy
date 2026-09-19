@@ -13,7 +13,7 @@ def test_plan_branch_reports_no_changes_when_already_compliant():
     client.get_branch_protection.return_value = None
     client.get_required_signatures.return_value = False
     config = _config()  # every field left unset -> managed-scope compares against itself
-    changes, resolved = plan_branch(client, config, "main")
+    changes, _resolved = plan_branch(client, config, "main")
     assert changes == []
 
 
