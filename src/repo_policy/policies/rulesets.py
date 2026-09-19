@@ -8,6 +8,20 @@ def ruleset_name(branch: str) -> str:
     return f"repo-policy:{branch}"
 
 
+# Every rule type to_api_payload actually builds. GitHub Rulesets support many more (e.g.
+# commit_message_pattern, tag_name_pattern, merge_queue, workflows) that repo-policy has no
+# schema for -- a human-added rule of one of those types must survive a full-object replace
+# triggered by an unrelated, modeled field changing, not be silently dropped.
+_MANAGED_RULE_TYPES = {
+    "pull_request",
+    "required_status_checks",
+    "required_signatures",
+    "required_linear_history",
+    "non_fast_forward",
+    "deletion",
+}
+
+
 def from_api(data: dict | None) -> BranchPolicy:
     # enforce_admins/required_conversation_resolution/lock_branch/allow_fork_syncing/
     # clear_restrictions have no GitHub Rulesets equivalent and are rejected for
@@ -41,13 +55,14 @@ def from_api(data: dict | None) -> BranchPolicy:
 
 def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None = None) -> dict:
     """`resolved` must already have every modeled field filled in (see diff.resolve_desired).
-    Rulesets are fully owned by repo-policy once named, so this is a full replace of the rules
-    array for every MODELED field -- but strict_required_status_checks_policy, `enforcement`
-    (active/evaluate/disabled), and `bypass_actors` have no modeled field (see
-    status_checks.to_ruleset_rule for the first), so `current_raw` (the ruleset's current GET
-    payload, or None on first creation) is threaded through to preserve all three instead of
-    resetting them on every apply. `enforcement` defaults to "active" and `bypass_actors` to an
-    empty list only when there's no current state to read from (first creation)."""
+    Rulesets are fully owned by repo-policy once named, so this rebuilds the rules array for
+    every MODELED field -- but strict_required_status_checks_policy, `enforcement`
+    (active/evaluate/disabled), `bypass_actors`, and any rule of an unmodeled type (see
+    _MANAGED_RULE_TYPES) have no modeled field (see status_checks.to_ruleset_rule for the first),
+    so `current_raw` (the ruleset's current GET payload, or None on first creation) is threaded
+    through to preserve all of them instead of resetting/dropping them on every apply.
+    `enforcement` defaults to "active" and `bypass_actors` to an empty list only when there's no
+    current state to read from (first creation)."""
     if resolved.pull_requests is None:
         raise ValueError(
             "resolved.pull_requests must not be None; pass a BranchPolicy produced by "
@@ -55,7 +70,10 @@ def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None
         )
     current_raw = current_raw or {}
     current_rules_by_type = {rule["type"]: rule for rule in current_raw.get("rules", [])}
-    rules: list[dict] = []
+    # Carry forward any existing rule of a type repo-policy doesn't model at all, verbatim.
+    rules: list[dict] = [
+        rule for rule in current_raw.get("rules", []) if rule["type"] not in _MANAGED_RULE_TYPES
+    ]
 
     pr_rule = pull_requests.to_ruleset_rule(resolved.pull_requests)
     if pr_rule is not None:

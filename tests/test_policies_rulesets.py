@@ -139,6 +139,39 @@ def test_to_api_payload_preserves_current_bypass_actors():
     assert payload["bypass_actors"] == [{"actor_id": 1, "actor_type": "Team", "bypass_mode": "always"}]
 
 
+def test_to_api_payload_preserves_unmanaged_rule_types():
+    """repo-policy has no schema for rule types like commit_message_pattern or merge_queue --
+    a human-added rule of an unrecognized type must survive a full-object replace triggered by an
+    unrelated, modeled field changing, not be silently dropped because `rules` is rebuilt from
+    scratch each time."""
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=True,
+    )
+    current_raw = {
+        "id": 7,
+        "rules": [
+            {"type": "commit_message_pattern", "parameters": {"pattern": "^JIRA-"}},
+            {"type": "merge_queue", "parameters": {}},
+        ],
+    }
+    payload = rulesets.to_api_payload("main", resolved, current_raw=current_raw)
+    rule_types = {rule["type"] for rule in payload["rules"]}
+    assert "commit_message_pattern" in rule_types
+    assert "merge_queue" in rule_types
+    assert "required_linear_history" in rule_types  # the modeled change is still applied
+
+
+def test_to_api_payload_drops_stale_unmanaged_rule_when_no_longer_present_in_current():
+    """Sanity check for the other direction: to_api_payload only carries forward whatever is
+    ACTUALLY in current_raw right now -- it's not accumulating rules across calls."""
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
+    )
+    payload = rulesets.to_api_payload("main", resolved, current_raw={"id": 7, "rules": []})
+    assert payload["rules"] == []
+
+
 def test_to_api_payload_defaults_bypass_actors_empty_on_first_creation():
     resolved = BranchPolicy(
         pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
