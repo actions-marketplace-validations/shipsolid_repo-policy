@@ -28,9 +28,12 @@ def _resolve_repo(repo: str | None) -> str:
     env_repo = os.environ.get("GITHUB_REPOSITORY")
     if env_repo:
         return env_repo
-    result = subprocess.run(
-        ["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=False
-    )
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=False
+        )
+    except FileNotFoundError:
+        raise click.ClickException("could not determine repository; pass --repo owner/name") from None
     url = result.stdout.strip()
     url = url.removesuffix(".git")
     for separator in ("github.com:", "github.com/"):

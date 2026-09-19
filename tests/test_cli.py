@@ -105,3 +105,16 @@ def test_audit_reports_usage_error_when_repo_cannot_be_resolved(mock_client_cls,
     result = runner.invoke(main, ["audit", "--token", "t"])
     assert result.exit_code != 0
     mock_client_cls.assert_not_called()
+
+
+@patch("repo_policy.cli.subprocess.run", side_effect=FileNotFoundError("git not found"))
+@patch("repo_policy.cli.GitHubClient")
+def test_audit_reports_usage_error_when_git_binary_is_missing(mock_client_cls, mock_run, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    (tmp_path / "policy.yml").write_text("version: 1\nbranches:\n  main: {}\n")
+    runner = CliRunner()
+    result = runner.invoke(main, ["audit", "--token", "t"])
+    assert result.exit_code != 0
+    assert "could not determine repository" in result.output
+    mock_client_cls.assert_not_called()
