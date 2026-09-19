@@ -142,6 +142,19 @@ def test_resolve_desired_strict_merges_pull_requests_field_by_field_with_schema_
     )
 
 
+def test_is_empty_does_not_misfire_on_unrelated_object_with_a_required_attribute():
+    """_is_empty used to dispatch via hasattr(value, "required") -- any future value type that
+    happens to expose a .required attribute with different emptiness semantics would have been
+    silently misclassified. Regression-proofing via a minimal stand-in object with a `.required`
+    that's neither a bool nor a list."""
+    class NotAPolicyValue:
+        required = 42
+
+    from repo_policy.diff import _is_empty
+
+    assert _is_empty("some_field", NotAPolicyValue()) is False
+
+
 def test_clear_restrictions_inverted_polarity_remove_when_clearing_an_existing_restriction():
     """clear_restrictions=False means an actual restriction exists (non-permissive); True means
     it's cleared (permissive) -- the same true-means-permissive polarity as allow_force_push/

@@ -5,7 +5,12 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
-from repo_policy.models import _RULESET_UNSUPPORTED_FIELDS, BranchPolicy, PullRequestPolicy
+from repo_policy.models import (
+    _RULESET_UNSUPPORTED_FIELDS,
+    BranchPolicy,
+    PullRequestPolicy,
+    StatusChecksPolicy,
+)
 
 ChangeAction = Literal["add", "modify", "remove"]
 
@@ -154,7 +159,8 @@ def _is_empty(field: str, value: Any) -> bool:
         return True
     if isinstance(value, (list, dict)) and not value:
         return True
-    if hasattr(value, "required"):
-        required = value.required
-        return required is False if isinstance(required, bool) else len(required) == 0
+    if isinstance(value, PullRequestPolicy):
+        return value.required is False
+    if isinstance(value, StatusChecksPolicy):
+        return len(value.required) == 0
     return False
