@@ -1,0 +1,40 @@
+version: 1
+
+branches:
+  main:
+    enforcement: branch_protection
+    pull_requests:
+      required: true
+      approvals: 1
+      code_owner_review: false
+      dismiss_stale_reviews: true
+      require_last_push_approval: true
+    linear_history: true
+    allow_force_push: false
+    allow_deletion: false
+    enforce_admins: true
+    required_conversation_resolution: true
+    lock_branch: false
+    allow_fork_syncing: false
+    clear_restrictions: true
+
+  repo-policy-verify:
+    enforcement: ruleset
+    pull_requests:
+      required: true
+      approvals: 1
+      code_owner_review: false
+      dismiss_stale_reviews: true
+      require_last_push_approval: true
+    linear_history: true
+    allow_force_push: false
+    allow_deletion: false
+
+repo_settings:
+  delete_branch_on_merge: true
+  allow_update_branch: true
+  vulnerability_alerts: true
+  automated_security_fixes: true
+  private_vulnerability_reporting: true
+  secret_scanning: true
+  secret_scanning_push_protection: true
