@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.1.4 (2026-09-19)
+
+### Bug Fixes
+
+- Keep repo_policy.__version__ in sync with the published version
+  ([`afe820a`](https://github.com/shipsolid/repo-policy/commit/afe820a045d323a28b2df0b76a2e131768818b3d))
+
+Confirmed via a real 'pip install repo-policy' from PyPI: __version__ still reported 0.1.0 while the
+  actual published package was 0.1.3. semantic-release's version_toml only updates pyproject.toml,
+  never the hardcoded string in __init__.py -- added version_variables so both stay in sync on every
+  future release, corrected the current value, and changed the test to check the value is a valid
+  semver string instead of hardcoding a literal that will always drift again otherwise.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.1.3 (2026-09-19)
 
 ### Bug Fixes
@@ -25,6 +41,20 @@ Sequenced after PyPI meant a PyPI failure (which has occurred on every release s
   last 3 release runs, where 'Move floating major tag' shows as skipped and no v1 tag was ever
   created. These two steps are independent; the Action's own consumers (uses:
   shipsolid/repo-policy@v1) must not be blocked by an unrelated PyPI outage.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Correct the Action's floating tag from @v1 to @v0
+  ([`a58436c`](https://github.com/shipsolid/repo-policy/commit/a58436ca0f976b380c42a979378fa7c064a12e50))
+
+The release workflow's tag-move step correctly extracts the CURRENT major version from each semver
+  release tag (v0.1.3 -> major 0) -- that step was working correctly the whole time. The bug was
+  mine: I manually created a v1 tag earlier, based on the README's example usage rather than actual
+  semver, and it silently went stale since the workflow only ever updates v0 (we haven't shipped
+  1.0.0). Deleted the stale v1 tag and corrected the README to the tag that's actually kept up to
+  date.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 
