@@ -44,7 +44,7 @@ class BranchPolicy(BaseModel):
     allow_fork_syncing: bool | None = None
 
     @model_validator(mode="after")
-    def _reject_ruleset_unsupported_fields(self) -> "BranchPolicy":
+    def _reject_ruleset_unsupported_fields(self) -> BranchPolicy:
         if self.enforcement != "ruleset":
             return self
         set_fields = [
