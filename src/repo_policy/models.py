@@ -60,6 +60,18 @@ class BranchPolicy(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _allow_fork_syncing_requires_lock_branch(self) -> BranchPolicy:
+        if self.enforcement != "branch_protection":
+            return self
+        if self.allow_fork_syncing is True and self.lock_branch is not True:
+            raise ValueError(
+                "allow_fork_syncing: true requires lock_branch: true to also be declared -- "
+                "GitHub silently resets allow_fork_syncing back to false whenever lock_branch is "
+                "false (confirmed via live-repo verification, see docs/test-strategy.md)"
+            )
+        return self
+
 
 class RepoSettingsPolicy(BaseModel):
     delete_branch_on_merge: bool | None = None

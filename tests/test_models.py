@@ -60,12 +60,28 @@ def test_branch_policy_allows_lock_branch_under_branch_protection():
 
 def test_branch_policy_rejects_allow_fork_syncing_under_ruleset():
     with pytest.raises(ValidationError, match="allow_fork_syncing"):
-        BranchPolicy(enforcement="ruleset", allow_fork_syncing=False)
+        BranchPolicy(enforcement="ruleset", allow_fork_syncing=True)
 
 
 def test_branch_policy_allows_allow_fork_syncing_under_branch_protection():
     policy = BranchPolicy(enforcement="branch_protection", allow_fork_syncing=False)
     assert policy.allow_fork_syncing is False
+
+
+def test_branch_policy_rejects_allow_fork_syncing_true_without_lock_branch():
+    with pytest.raises(ValidationError, match="lock_branch"):
+        BranchPolicy(enforcement="branch_protection", allow_fork_syncing=True)
+
+
+def test_branch_policy_rejects_allow_fork_syncing_true_with_lock_branch_false():
+    with pytest.raises(ValidationError, match="lock_branch"):
+        BranchPolicy(enforcement="branch_protection", allow_fork_syncing=True, lock_branch=False)
+
+
+def test_branch_policy_allows_allow_fork_syncing_true_with_lock_branch_true():
+    policy = BranchPolicy(enforcement="branch_protection", allow_fork_syncing=True, lock_branch=True)
+    assert policy.allow_fork_syncing is True
+    assert policy.lock_branch is True
 
 
 def test_branch_policy_rejects_clear_restrictions_under_ruleset():
