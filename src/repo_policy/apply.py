@@ -12,8 +12,11 @@ from repo_policy.policies import branch_protection, rulesets
 class BranchResult:
     branch: str
     changes: list[Change]
-    applied: bool
     stale_branch_protection: bool = False
+
+    @property
+    def applied(self) -> bool:
+        return bool(self.changes)
 
 
 def prefetch_rulesets(
@@ -65,7 +68,7 @@ def apply_branch(
     )
 
     if not changes:
-        return BranchResult(branch=branch, changes=[], applied=False, stale_branch_protection=stale)
+        return BranchResult(branch=branch, changes=[], stale_branch_protection=stale)
 
     if desired.enforcement == "branch_protection":
         payload = branch_protection.to_api_payload(resolved, raw)
@@ -79,7 +82,7 @@ def apply_branch(
         else:
             client.update_ruleset(ruleset_id, payload)
 
-    return BranchResult(branch=branch, changes=changes, applied=True, stale_branch_protection=stale)
+    return BranchResult(branch=branch, changes=changes, stale_branch_protection=stale)
 
 
 def apply_all(
