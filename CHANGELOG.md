@@ -1,6 +1,167 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-09-19)
+
+### Bug Fixes
+
+- Drop redundant forward-reference quotes on BranchPolicy validator
+  ([`6f64b39`](https://github.com/shipsolid/repo-policy/commit/6f64b39cf69b7b96b87ecc9df80f731ddd905b6f))
+
+ruff (UP037) flagged the return type annotation on _reject_ruleset_unsupported_fields -- unnecessary
+  since models.py already has `from __future__ import annotations`. Caught running this project's
+  actual CI checks (ruff + mypy), not just pytest.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Chores
+
+- Gitignore .claude/ (worktree tool state)
+  ([`1291c30`](https://github.com/shipsolid/repo-policy/commit/1291c30f17acb376f1874f16fef690f6269c3326))
+
+EnterWorktree creates worktrees under .claude/worktrees/ but nothing ignored the directory -- a
+  future 'git add -A' could have swept an entire linked worktree (including its own .venv and nested
+  .git) into a commit. No tracked content exists under .claude/ today.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Add branch-protection field-parity plan; reformat ROADMAP tables
+  ([`53085b6`](https://github.com/shipsolid/repo-policy/commit/53085b6e66c7c186e2afd188a04c488d6edac97f))
+
+Plan closes the two "Later" gap-analysis bullets added earlier against the sibling repo_security
+  baseline tool. ROADMAP.md's table reformat is an editor auto-format pass with no content change.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Correct stale PyPI trusted-publishing failure narrative
+  ([`537485f`](https://github.com/shipsolid/repo-policy/commit/537485fdf81b1773c9a7cc45a73d01c953a330e9))
+
+Both the release.yml comment and docs/ci-cd.md read as if PyPI publish was still failing. It isn't:
+  v0.1.0-v0.1.2 failed with invalid-publisher because the trusted publisher wasn't yet registered on
+  pypi.org, but v0.1.3 and v0.1.4 published successfully once it was. Confirmed against the actual
+  Actions run logs and live PyPI project state.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Reflect the 6 newly-modeled branch-protection fields
+  ([`ac6d515`](https://github.com/shipsolid/repo-policy/commit/ac6d515569d164c84ef9a0503d57e5cc037469cb))
+
+ARCHITECTURE.md's Domain Model and Apply Safety Model sections, and ROADMAP.md's Later section,
+  described the pre-this-plan state (fields read-through/unmodeled). Updates both to match what
+  Tasks 1-5 shipped.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Features
+
+- Model allow_fork_syncing, branch_protection-only
+  ([`4cc46b4`](https://github.com/shipsolid/repo-policy/commit/4cc46b4449b150ecee1be718542db4644256a789))
+
+Completes the four branch_protection-only fields (with enforce_admins,
+  required_conversation_resolution, lock_branch). Inverted polarity like
+  allow_force_push/allow_deletion: GitHub's own default is true (syncing allowed), so true/unset is
+  the permissive value here, not false.
+
+Also fixes tests/test_policies_parity.py's own PERMISSIVE fixture, which never got the three earlier
+  fields either -- masked until now because model_copy(update=...) always sets a real value on the
+  'resolved' side, so an unset PERMISSIVE's implicit bool(None)==False happened to match each
+  earlier field's real permissive default. allow_fork_syncing's inverted polarity broke that
+  coincidence and the parity guard caught it, exactly as designed. Plan doc updated to match.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Model dismiss_stale_reviews and require_last_push_approval
+  ([`41e59cb`](https://github.com/shipsolid/repo-policy/commit/41e59cb84d08c9e6ebb7a858bb82049ccda5a254))
+
+Previously read through from live GitHub state and never enforced. Both GitHub backends (classic
+  branch protection's required_pull_request_reviews, and the ruleset pull_request rule's parameters)
+  already had a slot for these -- converts them from unmodeled/preserved to declared/enforced,
+  following the same pattern approvals and code_owner_review already use.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Model enforce_admins, branch_protection-only
+  ([`97a531a`](https://github.com/shipsolid/repo-policy/commit/97a531a80869d3d686b64464ba6e0c350e2999bc))
+
+Highest-impact of the branch-protection fields the v1 schema doesn't model: without it, a repo admin
+  can bypass every other declared rule at will. No GitHub Rulesets equivalent exists (would require
+  bypass_actors role-ID configuration, out of scope here), so this is branch_protection enforcement
+  only -- a new BranchPolicy model validator rejects declaring a non-permissive value under
+  enforcement: ruleset at policy.yml parse time (the permissive value itself is still allowed
+  through, since rulesets.from_api's internal "current state" representation must be able to
+  construct it too), and rulesets.from_api hardcodes the field to its permissive constant so no
+  ruleset-enforced branch ever shows phantom drift for a field it structurally cannot represent.
+
+Also fixes tests/test_diff.py's PERMISSIVE fixture, which didn't set enforce_admins explicitly and
+  defaulted to None -- diverging from every real from_api() call, which now always returns a
+  concrete False. Left unfixed this reproduces the exact strict-mode phantom-drift bug class
+  docs/test-strategy.md documents from earlier live-repo testing. Plan doc updated in the same
+  commit to match: the validator's actual shape (a permissive-value-aware dict, not a plain non-None
+  check) and the added test_diff.py step were both discovered only while running the real test
+  suite, not anticipated when the plan was written.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Model lock_branch, branch_protection-only
+  ([`4ff8c9e`](https://github.com/shipsolid/repo-policy/commit/4ff8c9eaa81d5007bf66d548c7233f8631f50086))
+
+Makes the branch fully read-only when true. No ruleset rule type exists for this at all --
+  branch_protection-only, guarded by the same ruleset-unsupported-fields validator as enforce_admins
+  and required_conversation_resolution.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Model required_conversation_resolution, branch_protection-only
+  ([`5b34a5c`](https://github.com/shipsolid/repo-policy/commit/5b34a5c00cca09e5aae3e33159e393fbe52faa4c))
+
+Same shape as enforce_admins: GitHub's nearest ruleset equivalent
+  (required_review_thread_resolution) only exists as a pull_request rule parameter, which doesn't
+  always exist (pull_requests.required can be false) -- rather than build a mapping that's sometimes
+  silently unenforceable, this stays branch_protection-only, guarded by the same model validator
+  enforce_admins added.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
+## v0.1.5 (2026-09-19)
+
+### Chores
+
+- Remove internal planning docs (spec + implementation plan)
+  ([`cc06ebf`](https://github.com/shipsolid/repo-policy/commit/cc06ebfa8cbf79003ca70a9c0a853d2be56de130))
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Document that GITHUB_TOKEN cannot manage branch protection/rulesets
+  ([`12a725c`](https://github.com/shipsolid/repo-policy/commit/12a725c08bf51141151cd1229126b9cc6edbfaa6))
+
+Confirmed against a real GitHub Actions run: the auto-generated secrets.GITHUB_TOKEN has no
+  permission scope covering repository administration, under any permissions: configuration -- it
+  always fails with 403 Resource not accessible by integration on branch protection/ruleset
+  endpoints. This is a GitHub platform constraint, not something repo-policy or a workflow can work
+  around. Consumers must supply a real PAT via a custom repository secret; the README's GitHub
+  Action example and SECURITY.md now say so explicitly.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Write full documentation set for repo-policy
+  ([`a81512f`](https://github.com/shipsolid/repo-policy/commit/a81512fee5ab5c44ccb9bfba003dbef885b1726a))
+
+Adds ARCHITECTURE.md, 4 ADRs, docs/ci-cd.md, docs/test-strategy.md, docs/troubleshooting.md,
+  ROADMAP.md, FAQ.md, SUPPORT.md, and CODE_OF_CONDUCT.md; updates README/CONTRIBUTING/SECURITY in
+  place (fixes a dead link to the deleted planning spec, adds a CLI reference table, adds a threat
+  model). Content is grounded in this project's actual build history -- the three bugs live testing
+  caught, the GITHUB_TOKEN platform limitation, and the release-pipeline step-ordering fix -- rather
+  than generic template filler. Documentation domains that don't apply to a CLI tool (SLO, runbook,
+  PRD, k8s ops, etc.) were deliberately skipped, not padded in.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.1.4 (2026-09-19)
 
 ### Bug Fixes
