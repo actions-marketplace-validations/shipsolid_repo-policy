@@ -1,6 +1,6 @@
 # Fix Audit Findings Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Fix the 12 correctness/reliability findings from the 2026-09-20 product audit of `repo-policy` (3 Critical, 2 High, 5 Medium, ~4 Low — some Low findings are subsumed by other tasks), each landed as its own TDD cycle and commit.
 
@@ -35,7 +35,7 @@
 - Produces: `status_checks.to_ruleset_rule(policy: StatusChecksPolicy | None, current: dict | None = None) -> dict | None` — `current` is the existing rule dict of type `"required_status_checks"` (i.e. one entry from a ruleset's `rules` array), or `None` on first creation.
 - Produces: `rulesets.to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None = None) -> dict` — `current_raw` is the full current ruleset GET payload (or `None`), matching `branch_protection.to_api_payload`'s existing `current_raw` parameter shape.
 
-- [ ] **Step 1: Write the failing test for `to_ruleset_rule`**
+- [x] **Step 1: Write the failing test for `to_ruleset_rule`**
 
 Add to `tests/test_policies_status_checks.py`:
 
@@ -57,12 +57,12 @@ def test_to_ruleset_rule_preserves_strict_from_current_state():
     assert rule["parameters"]["strict_required_status_checks_policy"] is True
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_policies_status_checks.py -v -k to_ruleset_rule`
 Expected: `test_to_ruleset_rule_preserves_strict_from_current_state` FAILS (`assert False is True`); `test_to_ruleset_rule_defaults_strict_false_when_no_current_state` passes already (current behavior happens to default to `False`) — that's fine, it locks in the no-regression case.
 
-- [ ] **Step 3: Implement `to_ruleset_rule`'s current-state read-through**
+- [x] **Step 3: Implement `to_ruleset_rule`'s current-state read-through**
 
 In `src/repo_policy/policies/status_checks.py`, replace:
 
@@ -101,12 +101,12 @@ def to_ruleset_rule(policy: StatusChecksPolicy | None, current: dict | None = No
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_policies_status_checks.py -v -k to_ruleset_rule`
 Expected: both PASS
 
-- [ ] **Step 5: Write the failing test for `rulesets.to_api_payload` threading `current_raw` through**
+- [x] **Step 5: Write the failing test for `rulesets.to_api_payload` threading `current_raw` through**
 
 Add to `tests/test_policies_rulesets.py`:
 
@@ -130,12 +130,12 @@ def test_to_api_payload_preserves_current_strict_required_status_checks_policy()
     assert sc_rule["parameters"]["strict_required_status_checks_policy"] is True
 ```
 
-- [ ] **Step 6: Run test to verify it fails**
+- [x] **Step 6: Run test to verify it fails**
 
 Run: `pytest tests/test_policies_rulesets.py -v -k preserves_current_strict`
 Expected: FAIL (`TypeError: to_api_payload() got an unexpected keyword argument 'current_raw'`)
 
-- [ ] **Step 7: Implement `to_api_payload`'s `current_raw` threading**
+- [x] **Step 7: Implement `to_api_payload`'s `current_raw` threading**
 
 In `src/repo_policy/policies/rulesets.py`, replace:
 
@@ -189,12 +189,12 @@ def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None
         rules.append(sc_rule)
 ```
 
-- [ ] **Step 8: Run test to verify it passes**
+- [x] **Step 8: Run test to verify it passes**
 
 Run: `pytest tests/test_policies_rulesets.py -v`
 Expected: all PASS
 
-- [ ] **Step 9: Wire the real `raw` payload through from `apply_branch`**
+- [x] **Step 9: Wire the real `raw` payload through from `apply_branch`**
 
 In `src/repo_policy/apply.py`, in `apply_branch`, replace:
 
@@ -212,17 +212,17 @@ with:
         if ruleset_id is None:
 ```
 
-- [ ] **Step 10: Run the full test suite**
+- [x] **Step 10: Run the full test suite**
 
 Run: `pytest -v`
 Expected: all PASS (this touches `apply.py`, so re-run the full suite, not just the two files above)
 
-- [ ] **Step 11: Lint and type-check**
+- [x] **Step 11: Lint and type-check**
 
 Run: `ruff check src tests && mypy src`
 Expected: no errors
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add src/repo_policy/policies/status_checks.py src/repo_policy/policies/rulesets.py src/repo_policy/apply.py tests/test_policies_status_checks.py tests/test_policies_rulesets.py
@@ -251,7 +251,7 @@ bug #1) -- this mirrors that fix to the ruleset backend."
 - Produces: `GitHubClient.disable_automated_security_fixes() -> None`
 - Produces: `GitHubClient.disable_private_vulnerability_reporting() -> bool` (mirrors `enable_private_vulnerability_reporting`'s `bool` return: `True` on success, `False` on 422/unavailable)
 
-- [ ] **Step 1: Write the failing tests for the three new `GitHubClient` methods**
+- [x] **Step 1: Write the failing tests for the three new `GitHubClient` methods**
 
 Add to `tests/test_github_client.py`:
 
@@ -290,12 +290,12 @@ def test_disable_private_vulnerability_reporting_unavailable_via_422(client):
     assert client.disable_private_vulnerability_reporting() is False
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_github_client.py -v -k disable`
 Expected: FAIL (`AttributeError: 'GitHubClient' object has no attribute 'disable_vulnerability_alerts'`, etc.)
 
-- [ ] **Step 3: Implement the three `disable_*` methods**
+- [x] **Step 3: Implement the three `disable_*` methods**
 
 In `src/repo_policy/github_client.py`, immediately after `enable_vulnerability_alerts`:
 
@@ -335,12 +335,12 @@ Immediately after `enable_private_vulnerability_reporting`:
         return response is not None
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_github_client.py -v -k disable`
 Expected: all PASS
 
-- [ ] **Step 5: Write the failing tests for `apply_repo_settings`'s disable direction**
+- [x] **Step 5: Write the failing tests for `apply_repo_settings`'s disable direction**
 
 Add to `tests/test_repo_settings.py`:
 
@@ -383,12 +383,12 @@ def test_apply_repo_settings_disables_private_vulnerability_reporting():
     client.enable_private_vulnerability_reporting.assert_not_called()
 ```
 
-- [ ] **Step 6: Run tests to verify they fail**
+- [x] **Step 6: Run tests to verify they fail**
 
 Run: `pytest tests/test_repo_settings.py -v -k disables`
 Expected: FAIL (`AssertionError: Expected 'disable_vulnerability_alerts' to have been called once. Called 0 times.` — today's code calls `enable_vulnerability_alerts` instead)
 
-- [ ] **Step 7: Implement the direction branch in `apply_repo_settings`**
+- [x] **Step 7: Implement the direction branch in `apply_repo_settings`**
 
 In `src/repo_policy/repo_settings.py`, replace:
 
@@ -441,17 +441,17 @@ with:
             result.unavailable.append("private_vulnerability_reporting")
 ```
 
-- [ ] **Step 8: Run tests to verify they pass**
+- [x] **Step 8: Run tests to verify they pass**
 
 Run: `pytest tests/test_repo_settings.py -v`
 Expected: all PASS (including the pre-existing enable-direction tests, unchanged)
 
-- [ ] **Step 9: Run the full suite, lint, type-check**
+- [x] **Step 9: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/repo_policy/github_client.py src/repo_policy/repo_settings.py tests/test_github_client.py tests/test_repo_settings.py
@@ -486,7 +486,7 @@ pair already implemented for required_signatures); this adds the missing disable
 - Produces: `AuditResult.stale_branch_protection: bool = False`, `AuditResult.compliant` now also requires `not stale_branch_protection`.
 - Produces: `BranchResult.stale_branch_protection: bool = False`.
 
-- [ ] **Step 1: Write the failing test for the ruleset-side prune fix**
+- [x] **Step 1: Write the failing test for the ruleset-side prune fix**
 
 Add to `tests/test_apply.py`:
 
@@ -503,12 +503,12 @@ def test_prune_rulesets_deletes_ruleset_for_branch_switched_to_branch_protection
     client.delete_ruleset.assert_called_once_with(1)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_apply.py -v -k switched_to_branch_protection`
 Expected: FAIL (`assert [] == ["repo-policy:main"]` — today's `declared_names` includes `"repo-policy:main"` regardless of enforcement, so it's treated as still-declared and never pruned)
 
-- [ ] **Step 3: Implement the `prune_rulesets` fix**
+- [x] **Step 3: Implement the `prune_rulesets` fix**
 
 In `src/repo_policy/apply.py`, replace:
 
@@ -557,12 +557,12 @@ def prune_rulesets(
     return deleted
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_apply.py -v -k prune_rulesets`
 Expected: all PASS (including the pre-existing prune tests, unchanged)
 
-- [ ] **Step 5: Write the failing test for `detect_stale_branch_protection`**
+- [x] **Step 5: Write the failing test for `detect_stale_branch_protection`**
 
 In `tests/test_apply.py`, change the existing top import line from:
 
@@ -600,12 +600,12 @@ def test_detect_stale_branch_protection_empty_when_no_leftover_protection_exists
     assert detect_stale_branch_protection(client, config) == []
 ```
 
-- [ ] **Step 6: Run tests to verify they fail**
+- [x] **Step 6: Run tests to verify they fail**
 
 Run: `pytest tests/test_apply.py -v -k detect_stale_branch_protection`
 Expected: FAIL (`ImportError: cannot import name 'detect_stale_branch_protection'`)
 
-- [ ] **Step 7: Implement `detect_stale_branch_protection` and the `BranchResult` field**
+- [x] **Step 7: Implement `detect_stale_branch_protection` and the `BranchResult` field**
 
 In `src/repo_policy/apply.py`, add after `prune_rulesets`:
 
@@ -647,12 +647,12 @@ class BranchResult:
     stale_branch_protection: bool = False
 ```
 
-- [ ] **Step 8: Run tests to verify they pass**
+- [x] **Step 8: Run tests to verify they pass**
 
 Run: `pytest tests/test_apply.py -v -k detect_stale_branch_protection`
 Expected: all PASS
 
-- [ ] **Step 9: Write the failing test wiring `stale_branch_protection` into `apply_branch`/`apply_all`**
+- [x] **Step 9: Write the failing test wiring `stale_branch_protection` into `apply_branch`/`apply_all`**
 
 Add to `tests/test_apply.py`:
 
@@ -675,14 +675,14 @@ def test_apply_branch_no_stale_flag_for_branch_protection_enforced_branch():
     assert result.stale_branch_protection is False
 ```
 
-- [ ] **Step 10: Run tests to verify they fail**
+- [x] **Step 10: Run tests to verify they fail**
 
 Run: `pytest tests/test_apply.py -v -k stale_branch_protection`
 Expected: FAIL (`AttributeError`/`assert False is True` — `apply_branch` doesn't set the field yet)
 
 Note: `test_apply_branch_flags_stale_branch_protection_for_ruleset_enforced_branch` calls `client.get_branch_protection` twice conceptually (once inside `apply_branch`'s own stale check, if you wire it that way) -- wire it through `fetch_current`'s ruleset path is NOT where this belongs (that path never calls `get_branch_protection` today, and shouldn't start doing so for its own diff logic). Compute the stale flag independently in `apply_branch`, as shown below.
 
-- [ ] **Step 11: Implement the `apply_branch`/`apply_all` wiring**
+- [x] **Step 11: Implement the `apply_branch`/`apply_all` wiring**
 
 In `src/repo_policy/apply.py`, replace `apply_branch`:
 
@@ -749,12 +749,12 @@ def apply_branch(
     return BranchResult(branch=branch, changes=changes, applied=True, stale_branch_protection=stale)
 ```
 
-- [ ] **Step 12: Run tests to verify they pass**
+- [x] **Step 12: Run tests to verify they pass**
 
 Run: `pytest tests/test_apply.py -v`
 Expected: all PASS
 
-- [ ] **Step 13: Write the failing test for `AuditResult`/`audit_all`**
+- [x] **Step 13: Write the failing test for `AuditResult`/`audit_all`**
 
 Add to `tests/test_audit.py` (read the file first to match its existing `MagicMock`/fixture style):
 
@@ -771,12 +771,12 @@ def test_audit_all_flags_stale_branch_protection_and_treats_it_as_non_compliant(
 
 (Add `from repo_policy.models import BranchPolicy, PolicyConfig` to the test file's imports if not already present.)
 
-- [ ] **Step 14: Run test to verify it fails**
+- [x] **Step 14: Run test to verify it fails**
 
 Run: `pytest tests/test_audit.py -v -k stale_branch_protection`
 Expected: FAIL
 
-- [ ] **Step 15: Implement the `AuditResult`/`audit_all` wiring**
+- [x] **Step 15: Implement the `AuditResult`/`audit_all` wiring**
 
 Replace the full contents of `src/repo_policy/audit.py`. Note this reuses `detect_stale_branch_protection` from `apply.py` (added in Step 7 above) rather than re-deriving the same per-branch condition a second time — `audit_all` naturally iterates the whole config already, so one batched call up front costs the same number of `get_branch_protection` calls as an inline per-branch check would:
 
@@ -816,12 +816,12 @@ def audit_all(client: GitHubClient, config: PolicyConfig) -> list[AuditResult]:
 
 (`apply_branch`, in Step 11 below, keeps its own single-branch inline check rather than calling `detect_stale_branch_protection` — that function scans every branch in `config`, so calling it from inside a per-branch function that's itself called once per branch from `apply_all`'s loop would cost O(n²) API calls instead of O(n).)
 
-- [ ] **Step 16: Run tests to verify they pass**
+- [x] **Step 16: Run tests to verify they pass**
 
 Run: `pytest tests/test_audit.py -v`
 Expected: all PASS
 
-- [ ] **Step 17: Write the failing CLI test**
+- [x] **Step 17: Write the failing CLI test**
 
 Add to `tests/test_cli.py`:
 
@@ -856,12 +856,12 @@ def test_apply_reports_stale_branch_protection_warning(mock_client_cls, tmp_path
     assert "classic branch protection still exists" in result.output
 ```
 
-- [ ] **Step 18: Run tests to verify they fail**
+- [x] **Step 18: Run tests to verify they fail**
 
 Run: `pytest tests/test_cli.py -v -k stale_branch_protection`
 Expected: FAIL (`assert 0 == 1`; message not in output — `cli.py` doesn't print or act on the new field yet)
 
-- [ ] **Step 19: Implement the `cli.py` wiring**
+- [x] **Step 19: Implement the `cli.py` wiring**
 
 In `src/repo_policy/cli.py`, in `_run_check`, replace:
 
@@ -921,12 +921,12 @@ with:
             )
 ```
 
-- [ ] **Step 20: Run tests to verify they pass**
+- [x] **Step 20: Run tests to verify they pass**
 
 Run: `pytest tests/test_cli.py -v`
 Expected: all PASS
 
-- [ ] **Step 21: Update `ARCHITECTURE.md`'s known-limitations section**
+- [x] **Step 21: Update `ARCHITECTURE.md`'s known-limitations section**
 
 Read `ARCHITECTURE.md` around line 155 first to confirm exact current text, then add a new bullet immediately after the existing "Known limitation: strict mode cannot fully unprotect..." bullet:
 
@@ -941,12 +941,12 @@ Read `ARCHITECTURE.md` around line 155 first to confirm exact current text, then
   convention.
 ```
 
-- [ ] **Step 22: Run the full suite, lint, type-check**
+- [x] **Step 22: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 23: Commit**
+- [x] **Step 23: Commit**
 
 ```bash
 git add src/repo_policy/apply.py src/repo_policy/audit.py src/repo_policy/cli.py ARCHITECTURE.md tests/test_apply.py tests/test_audit.py tests/test_cli.py
@@ -979,7 +979,7 @@ this direction is detected and reported rather than auto-deleted."
 - Produces: `diff.PolicyResolutionError(Exception)` — raised when merging declared + current state produces a combination `BranchPolicy`'s validators reject.
 - `resolve_desired(desired: BranchPolicy, current: BranchPolicy, *, strict: bool) -> BranchPolicy` — same signature, now raises `PolicyResolutionError` instead of silently returning an invalid object.
 
-- [ ] **Step 1: Write the failing test for H1 (validator bypass)**
+- [x] **Step 1: Write the failing test for H1 (validator bypass)**
 
 Add to `tests/test_diff.py`:
 
@@ -1001,12 +1001,12 @@ def test_resolve_desired_raises_when_managed_scope_merge_produces_invalid_combin
 
 (`import pytest` and the `PolicyResolutionError` import go at the top with the existing imports; `BranchPolicy`/`PullRequestPolicy`/`StatusChecksPolicy`/`PERMISSIVE` are already defined in this file.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_diff.py -v -k invalid_combination`
 Expected: FAIL (`ImportError: cannot import name 'PolicyResolutionError'`)
 
-- [ ] **Step 3: Write the failing test for H2 (partial `pull_requests` declaration)**
+- [x] **Step 3: Write the failing test for H2 (partial `pull_requests` declaration)**
 
 Add to `tests/test_diff.py`:
 
@@ -1044,12 +1044,12 @@ def test_resolve_desired_strict_merges_pull_requests_field_by_field_with_schema_
     )
 ```
 
-- [ ] **Step 4: Run tests to verify they fail**
+- [x] **Step 4: Run tests to verify they fail**
 
 Run: `pytest tests/test_diff.py -v -k merges_pull_requests`
 Expected: FAIL (`assert PullRequestPolicy(required=True, approvals=2, code_owner_review=False, dismiss_stale_reviews=False, require_last_push_approval=False) == PullRequestPolicy(required=True, approvals=2, code_owner_review=True, dismiss_stale_reviews=True, require_last_push_approval=True)`)
 
-- [ ] **Step 5: Implement `PolicyResolutionError`, `_merge_pull_requests`, and the rewritten `resolve_desired`**
+- [x] **Step 5: Implement `PolicyResolutionError`, `_merge_pull_requests`, and the rewritten `resolve_desired`**
 
 In `src/repo_policy/diff.py`, the existing top-of-file imports already include `from repo_policy.models import BranchPolicy, PullRequestPolicy` — leave that line as-is. Add one new import line alongside it, plus the new exception class, right after the existing imports:
 
@@ -1119,12 +1119,12 @@ def _merge_pull_requests(
     return PullRequestPolicy(**merged)
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `pytest tests/test_diff.py -v`
 Expected: all PASS (including every pre-existing `resolve_desired`/`diff` test)
 
-- [ ] **Step 7: Write the failing CLI test for `PolicyResolutionError` handling**
+- [x] **Step 7: Write the failing CLI test for `PolicyResolutionError` handling**
 
 Add to `tests/test_cli.py`:
 
@@ -1145,12 +1145,12 @@ def test_audit_reports_config_error_on_invalid_managed_scope_merge(mock_client_c
     assert result.exit_code == 2
 ```
 
-- [ ] **Step 8: Run test to verify it fails**
+- [x] **Step 8: Run test to verify it fails**
 
 Run: `pytest tests/test_cli.py -v -k invalid_managed_scope_merge`
 Expected: FAIL (currently an unhandled `PolicyResolutionError` propagates out of `audit_all` as an uncaught exception — click's `CliRunner.invoke` catches it and sets `result.exit_code` to a nonzero value from the exception, but not `2`; confirm the exact current failure by running it, then proceed)
 
-- [ ] **Step 9: Implement `PolicyResolutionError` handling in `cli.py`**
+- [x] **Step 9: Implement `PolicyResolutionError` handling in `cli.py`**
 
 In `src/repo_policy/cli.py`, add `PolicyResolutionError` to the imports:
 
@@ -1220,17 +1220,17 @@ with:
         sys.exit(EXIT_CONFIG_ERROR)
 ```
 
-- [ ] **Step 10: Run test to verify it passes**
+- [x] **Step 10: Run test to verify it passes**
 
 Run: `pytest tests/test_cli.py -v -k invalid_managed_scope_merge`
 Expected: PASS
 
-- [ ] **Step 11: Run the full suite, lint, type-check**
+- [x] **Step 11: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add src/repo_policy/diff.py src/repo_policy/cli.py tests/test_diff.py tests/test_cli.py
@@ -1257,7 +1257,7 @@ model_fields_set, matching every other BranchPolicy field's managed-scope behavi
 - Modify: `src/repo_policy/diff.py:48`
 - Test: `tests/test_diff.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_diff.py`:
 
@@ -1275,12 +1275,12 @@ def test_clear_restrictions_inverted_polarity_remove_when_clearing_an_existing_r
     assert changes[0].action == "remove"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_diff.py -v -k clear_restrictions_inverted`
 Expected: FAIL (`assert 'add' == 'remove'`)
 
-- [ ] **Step 3: Implement the fix**
+- [x] **Step 3: Implement the fix**
 
 In `src/repo_policy/diff.py`, replace:
 
@@ -1307,17 +1307,17 @@ Update the comment immediately above it (currently explaining only `allow_force_
 # docs/test-strategy.md.
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_diff.py -v`
 Expected: all PASS
 
-- [ ] **Step 5: Run the full suite, lint, type-check**
+- [x] **Step 5: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/repo_policy/diff.py tests/test_diff.py
@@ -1345,7 +1345,7 @@ this is a reporting-only fix, but plan output is what a human reads before appro
 **Interfaces:**
 - Produces: `cli._config_error(message: str) -> click.ClickException` — a `ClickException` pre-set to `exit_code=EXIT_CONFIG_ERROR`.
 
-- [ ] **Step 1: Tighten the four existing "some nonzero exit code" assertions**
+- [x] **Step 1: Tighten the four existing "some nonzero exit code" assertions**
 
 In `tests/test_cli.py`, change each of these four tests' assertion from `result.exit_code != 0` to `result.exit_code == 2` (leave everything else in each test unchanged):
 
@@ -1354,12 +1354,12 @@ In `tests/test_cli.py`, change each of these four tests' assertion from `result.
 - `test_audit_reports_usage_error_when_no_token_configured`
 - `test_audit_reports_usage_error_when_git_binary_is_missing`
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_cli.py -v -k "malformed_repo or repo_cannot_be_resolved or no_token_configured or git_binary_is_missing"`
 Expected: all 4 FAIL (`assert 1 == 2`) — confirms today's exit code really is `1`, colliding with `EXIT_DRIFT`
 
-- [ ] **Step 3: Write the failing test for the `_resolve_repo` returncode fix**
+- [x] **Step 3: Write the failing test for the `_resolve_repo` returncode fix**
 
 Add to `tests/test_cli.py`:
 
@@ -1383,12 +1383,12 @@ def test_audit_reports_usage_error_when_git_remote_command_fails(mock_client_cls
 
 Add `from unittest.mock import MagicMock, patch` to the top of `tests/test_cli.py` if `MagicMock` isn't already imported there (it currently imports only `patch`).
 
-- [ ] **Step 4: Run test to verify it fails**
+- [x] **Step 4: Run test to verify it fails**
 
 Run: `pytest tests/test_cli.py -v -k git_remote_command_fails`
 Expected: FAIL (today's code never checks `returncode`, so an empty `stdout` falls through to the final `raise click.ClickException(...)` anyway in this particular case — but the exit code is `1`, not `2`, so this fails on the exit-code assertion, confirming both problems this task fixes)
 
-- [ ] **Step 5: Implement the fix**
+- [x] **Step 5: Implement the fix**
 
 In `src/repo_policy/cli.py`, replace:
 
@@ -1478,17 +1478,17 @@ def _split_repo(resolved_repo: str) -> tuple[str, str]:
     return owner, name
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `pytest tests/test_cli.py -v`
 Expected: all PASS
 
-- [ ] **Step 7: Run the full suite, lint, type-check**
+- [x] **Step 7: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/repo_policy/cli.py tests/test_cli.py
@@ -1512,7 +1512,7 @@ invocation's returncode and parsing whatever stdout happened to contain regardle
 - Modify: `src/repo_policy/repo_settings.py:92`
 - Test: `tests/test_repo_settings.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_repo_settings.py`:
 
@@ -1527,12 +1527,12 @@ def test_apply_repo_settings_reports_not_applied_when_only_change_is_unavailable
     assert result.applied is False
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_repo_settings.py -v -k reports_not_applied_when_only_change_is_unavailable`
 Expected: FAIL (`assert True is False` — today's `result.applied` is `bool(result.changes)`, and `result.changes` still has the one `secret_scanning` entry even though it never landed)
 
-- [ ] **Step 3: Implement the fix**
+- [x] **Step 3: Implement the fix**
 
 In `src/repo_policy/repo_settings.py`, replace the final line of `apply_repo_settings`:
 
@@ -1548,17 +1548,17 @@ with:
     return result
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_repo_settings.py -v`
 Expected: all PASS (including every pre-existing `applied`-asserting test, unchanged — they all involve changes that DO land)
 
-- [ ] **Step 5: Run the full suite, lint, type-check**
+- [x] **Step 5: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/repo_policy/repo_settings.py tests/test_repo_settings.py
@@ -1579,7 +1579,7 @@ apply printed 'applied 1 change(s)' and 'unavailable' for the same field in the 
 - Modify: `src/repo_policy/models.py` (`RepoSettingsPolicy`)
 - Test: `tests/test_models.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/test_models.py`:
 
@@ -1599,12 +1599,12 @@ def test_repo_settings_allows_secret_scanning_push_protection_with_secret_scanni
     assert policy.secret_scanning_push_protection is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_models.py -v -k secret_scanning_push_protection`
 Expected: the first two FAIL (no `ValidationError` raised today); the third PASSES already
 
-- [ ] **Step 3: Implement the validator**
+- [x] **Step 3: Implement the validator**
 
 In `src/repo_policy/models.py`, in `RepoSettingsPolicy`, immediately after `_automated_security_fixes_requires_vulnerability_alerts`, add:
 
@@ -1620,17 +1620,17 @@ In `src/repo_policy/models.py`, in `RepoSettingsPolicy`, immediately after `_aut
         return self
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_models.py -v`
 Expected: all PASS
 
-- [ ] **Step 5: Run the full suite, lint, type-check**
+- [x] **Step 5: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/repo_policy/models.py tests/test_models.py
@@ -1652,7 +1652,7 @@ genuinely-unlicensed GHAS -- hiding an actionable config fix as if nothing could
 - Modify: `src/repo_policy/github_client.py:57-91` (`_request`)
 - Test: `tests/test_github_client.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_github_client.py`:
 
@@ -1679,12 +1679,12 @@ def test_request_still_retries_post_on_429(client):
     assert route.call_count == 2
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_github_client.py -v -k "does_not_retry_post_on_500 or still_retries_post_on_429"`
 Expected: `test_request_does_not_retry_post_on_500` FAILS (`assert 4 == 1` — today's code retries POST on 500 up to `max_retries`); `test_request_still_retries_post_on_429` already PASSES (locks in the no-regression case)
 
-- [ ] **Step 3: Implement the fix**
+- [x] **Step 3: Implement the fix**
 
 In `src/repo_policy/github_client.py`, in `_request`, replace:
 
@@ -1709,17 +1709,17 @@ with:
             is_retryable = is_rate_limited or (is_server_error and method != "POST")
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_github_client.py -v`
 Expected: all PASS (including `test_request_retries_on_500_then_succeeds`, which uses `GET` and is unaffected)
 
-- [ ] **Step 5: Run the full suite, lint, type-check**
+- [x] **Step 5: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/repo_policy/github_client.py tests/test_github_client.py
@@ -1741,7 +1741,7 @@ those before doing any work."
 - Modify: `src/repo_policy/github_client.py:146-152`
 - Test: `tests/test_github_client.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_github_client.py`:
 
@@ -1754,12 +1754,12 @@ def test_get_private_vulnerability_reporting_defaults_false_when_enabled_key_mis
     assert client.get_private_vulnerability_reporting() is False
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_github_client.py -v -k defaults_false_when_enabled_key_missing`
 Expected: FAIL (`assert True is False`)
 
-- [ ] **Step 3: Implement the fix**
+- [x] **Step 3: Implement the fix**
 
 In `src/repo_policy/github_client.py`, replace:
 
@@ -1785,17 +1785,17 @@ with:
         return bool(response.json().get("enabled", False)) if response is not None else None
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_github_client.py -v`
 Expected: all PASS (the existing `test_get_private_vulnerability_reporting_enabled` test mocks an explicit `"enabled": True`, so it's unaffected by the default change)
 
-- [ ] **Step 5: Run the full suite, lint, type-check**
+- [x] **Step 5: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/repo_policy/github_client.py tests/test_github_client.py
@@ -1815,7 +1815,7 @@ True failed open in the riskier direction for a security-relevant setting."
 - Modify: `src/repo_policy/github_client.py:23-55` (`__init__`, `close`)
 - Test: `tests/test_github_client.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/test_github_client.py`:
 
@@ -1834,12 +1834,12 @@ def test_close_closes_a_client_it_created_itself():
     assert client._client.is_closed is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_github_client.py -v -k "does_not_close_an_injected_client or closes_a_client_it_created_itself"`
 Expected: `test_close_does_not_close_an_injected_client` FAILS (`assert True is False` — today's `close()` always closes `self._client`); the second test already passes (locks in the no-regression case)
 
-- [ ] **Step 3: Implement the fix**
+- [x] **Step 3: Implement the fix**
 
 In `src/repo_policy/github_client.py`, replace `__init__` and `close`:
 
@@ -1907,17 +1907,17 @@ with:
             self._client.close()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_github_client.py -v`
 Expected: all PASS
 
-- [ ] **Step 5: Run the full suite, lint, type-check**
+- [x] **Step 5: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/repo_policy/github_client.py tests/test_github_client.py
@@ -1938,7 +1938,7 @@ across multiple GitHubClient wrappers."
 - Modify: `src/repo_policy/config.py:40-45` (`_format_validation_error`)
 - Test: `tests/test_config.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Read `tests/test_config.py` first to match its existing style (fixture files vs. inline `tmp_path` writes), then add:
 
@@ -1953,12 +1953,12 @@ def test_load_policy_gives_actionable_message_when_top_level_is_not_a_mapping(tm
 
 (Add `import pytest` at the top of `tests/test_config.py` if not already present, alongside the existing `load_policy`/`ConfigError` imports.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_config.py -v -k not_a_mapping`
 Expected: FAIL (`assert '<policy file root>' in '...\n  - : Input should be a valid dictionary...'` — the location is currently a bare empty string before the colon)
 
-- [ ] **Step 3: Implement the fix**
+- [x] **Step 3: Implement the fix**
 
 In `src/repo_policy/config.py`, replace:
 
@@ -1982,17 +1982,17 @@ def _format_validation_error(path: Path, exc: ValidationError) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_config.py -v`
 Expected: all PASS
 
-- [ ] **Step 5: Run the full suite, lint, type-check**
+- [x] **Step 5: Run the full suite, lint, type-check**
 
 Run: `pytest -v && ruff check src tests && mypy src`
 Expected: all PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/repo_policy/config.py tests/test_config.py
@@ -2006,16 +2006,16 @@ pydantic reports a root-level type error with loc == (), which rendered as a bar
 
 ## Final Verification
 
-- [ ] **Full suite, including markers excluded by default:**
+- [x] **Full suite, including markers excluded by default:**
 
 Run: `pytest -v` (unit suite) — all PASS, no skips beyond the pre-existing `e2e`-marked tests.
 
-- [ ] **Lint and type-check one more time on the whole tree:**
+- [x] **Lint and type-check one more time on the whole tree:**
 
 Run: `ruff check src tests && mypy src`
 
-- [ ] **Manual smoke test against `tests/fixtures/policy_valid.yml` (or any repo you can safely point at) using `--repo`/`--token` you control:**
+- [x] **Manual smoke test against `tests/fixtures/policy_valid.yml` (or any repo you can safely point at) using `--repo`/`--token` you control:**
 
 Run: `repo-policy plan --config tests/fixtures/policy_valid.yml --repo <owner>/<repo> --token <token>` and confirm the output renders as expected (no crash, sensible plan).
 
-- [ ] **Re-read `docs/test-strategy.md`'s "four real bugs" section and consider adding a fifth entry** documenting that this round of fixes was caught by code review (not live-repo testing) — optional, matches the project's own documentation discipline but is not required for this plan's completion.
+- [x] **Re-read `docs/test-strategy.md`'s "four real bugs" section and consider adding a fifth entry** documenting that this round of fixes was caught by code review (not live-repo testing) — optional, matches the project's own documentation discipline but is not required for this plan's completion.
