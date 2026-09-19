@@ -30,6 +30,32 @@ def test_to_branch_protection_defaults_new_fields_false():
     assert payload["require_last_push_approval"] is False
 
 
+def test_to_branch_protection_preserves_dismissal_restrictions_from_current_state():
+    """dismissal_restrictions/bypass_pull_request_allowances have no modeled field -- a human-set
+    allow-list must survive a full-object PUT triggered by an unrelated, modeled field changing.
+    GitHub's GET shapes these as full user/team/app objects; PUT wants bare login/slug strings."""
+    policy = PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
+    current = {
+        "dismissal_restrictions": {
+            "users": [{"login": "octocat", "id": 1}],
+            "teams": [{"slug": "justice-league", "id": 2}],
+        },
+        "bypass_pull_request_allowances": {
+            "users": [], "teams": [], "apps": [{"slug": "dependabot", "id": 3}],
+        },
+    }
+    payload = pull_requests.to_branch_protection(policy, current=current)
+    assert payload["dismissal_restrictions"] == {"users": ["octocat"], "teams": ["justice-league"], "apps": []}
+    assert payload["bypass_pull_request_allowances"] == {"users": [], "teams": [], "apps": ["dependabot"]}
+
+
+def test_to_branch_protection_omits_dismissal_restrictions_when_none_exist():
+    policy = PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
+    payload = pull_requests.to_branch_protection(policy, current=None)
+    assert "dismissal_restrictions" not in payload
+    assert "bypass_pull_request_allowances" not in payload
+
+
 def test_from_branch_protection_none_means_not_required():
     result = pull_requests.from_branch_protection(None)
     assert result.required is False

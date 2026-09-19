@@ -29,6 +29,21 @@ def _unwrap(value: object, default: bool) -> bool:
     return bool(value)
 
 
+def _actor_refs(raw: dict | None) -> dict | None:
+    """GitHub's GET response shapes actor allow-lists (branch-protection restrictions,
+    required_pull_request_reviews.dismissal_restrictions/bypass_pull_request_allowances) as
+    arrays of full user/team/app objects; the PUT/PATCH request body expects arrays of bare
+    login/slug strings. Sending the GET shape back verbatim 422s -- this is the transform between
+    the two, shared by every endpoint with this exact GET/PUT asymmetry."""
+    if raw is None:
+        return None
+    return {
+        "users": [user["login"] for user in raw.get("users", [])],
+        "teams": [team["slug"] for team in raw.get("teams", [])],
+        "apps": [app["slug"] for app in raw.get("apps", [])],
+    }
+
+
 class GitHubClient:
     def __init__(
         self,

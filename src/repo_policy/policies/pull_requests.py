@@ -1,20 +1,32 @@
 from __future__ import annotations
 
+from repo_policy.github_client import _actor_refs
 from repo_policy.models import PullRequestPolicy
 
 
-def to_branch_protection(policy: PullRequestPolicy) -> dict | None:
+def to_branch_protection(policy: PullRequestPolicy, current: dict | None = None) -> dict | None:
     """dismiss_stale_reviews/require_last_push_approval are modeled directly on PullRequestPolicy
     (previously read through from current state — see commit 41e59cb, "model
-    dismiss_stale_reviews and require_last_push_approval", for why that changed)."""
+    dismiss_stale_reviews and require_last_push_approval", for why that changed).
+    dismissal_restrictions/bypass_pull_request_allowances have no modeled field at all -- `current`
+    is the branch's existing required_pull_request_reviews GET payload (or None on first
+    creation), read through the same way status_checks.to_branch_protection's `strict` is, so a
+    human-set allow-list isn't silently reset to empty by an unrelated declared change. Omitted
+    entirely (not sent as an empty allow-list) when there's no current state to read from."""
     if not policy.required:
         return None
-    return {
+    current = current or {}
+    payload: dict[str, object] = {
         "required_approving_review_count": policy.approvals,
         "require_code_owner_reviews": policy.code_owner_review,
         "dismiss_stale_reviews": policy.dismiss_stale_reviews,
         "require_last_push_approval": policy.require_last_push_approval,
     }
+    if current.get("dismissal_restrictions") is not None:
+        payload["dismissal_restrictions"] = _actor_refs(current["dismissal_restrictions"])
+    if current.get("bypass_pull_request_allowances") is not None:
+        payload["bypass_pull_request_allowances"] = _actor_refs(current["bypass_pull_request_allowances"])
+    return payload
 
 
 def from_branch_protection(data: dict | None) -> PullRequestPolicy:
