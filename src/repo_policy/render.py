@@ -16,6 +16,7 @@ _LABELS = {
     "required_conversation_resolution": "Conversation resolution",
     "lock_branch": "Branch lock",
     "allow_fork_syncing": "Fork syncing",
+    "clear_restrictions": "Push restrictions",
 }
 
 _REPO_SETTINGS_LABELS = {

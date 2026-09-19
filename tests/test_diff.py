@@ -12,6 +12,7 @@ PERMISSIVE = BranchPolicy(
     required_conversation_resolution=False,
     lock_branch=False,
     allow_fork_syncing=True,
+    clear_restrictions=True,
 )
 
 

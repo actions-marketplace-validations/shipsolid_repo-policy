@@ -27,6 +27,7 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
             required_conversation_resolution=False,
             lock_branch=False,
             allow_fork_syncing=True,
+            clear_restrictions=True,
         )
     return BranchPolicy(
         enforcement="branch_protection",
@@ -40,13 +41,17 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
         required_conversation_resolution=_unwrap(data.get("required_conversation_resolution"), False),
         lock_branch=_unwrap(data.get("lock_branch"), False),
         allow_fork_syncing=_unwrap(data.get("allow_fork_syncing"), True),
+        clear_restrictions=data.get("restrictions") is None,
     )
 
 
 def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
-    """`resolved` must already have every modeled field filled in (see diff.resolve_desired) —
-    this only reads `current_raw` for `restrictions`, the one PUT-required field the v1 schema
-    still doesn't model, preserving whatever is already there."""
+    """`resolved` must already have every modeled field filled in (see diff.resolve_desired).
+    `restrictions` is now modeled via `clear_restrictions` — but only as "null or leave alone,"
+    not as an arbitrary user/team/app allowlist, since repo-policy has no schema for declaring one
+    and the sibling tool this field closes the gap against (see
+    docs/superpowers/plans/2026-09-19-clear-restrictions-field.md) never sets one either, only ever
+    clears it."""
     current_raw = current_raw or {}
     if resolved.pull_requests is None:
         raise ValueError(
@@ -55,7 +60,7 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
         )
     return {
         "enforce_admins": bool(resolved.enforce_admins),
-        "restrictions": current_raw.get("restrictions"),
+        "restrictions": None if resolved.clear_restrictions else current_raw.get("restrictions"),
         "required_pull_request_reviews": pull_requests.to_branch_protection(resolved.pull_requests),
         "required_status_checks": status_checks.to_branch_protection(
             resolved.status_checks, current_raw.get("required_status_checks")

@@ -26,6 +26,7 @@ class StatusChecksPolicy(BaseModel):
 _RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
     "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
     "allow_fork_syncing": True,  # inverted polarity: True is the permissive value here
+    "clear_restrictions": True,  # True is the permissive value here too: no restriction in effect
 }
 
 
@@ -42,6 +43,7 @@ class BranchPolicy(BaseModel):
     required_conversation_resolution: bool | None = None
     lock_branch: bool | None = None
     allow_fork_syncing: bool | None = None
+    clear_restrictions: bool | None = None
 
     @model_validator(mode="after")
     def _reject_ruleset_unsupported_fields(self) -> BranchPolicy:

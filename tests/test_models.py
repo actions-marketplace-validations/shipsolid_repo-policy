@@ -68,6 +68,16 @@ def test_branch_policy_allows_allow_fork_syncing_under_branch_protection():
     assert policy.allow_fork_syncing is False
 
 
+def test_branch_policy_rejects_clear_restrictions_under_ruleset():
+    with pytest.raises(ValidationError, match="clear_restrictions"):
+        BranchPolicy(enforcement="ruleset", clear_restrictions=False)
+
+
+def test_branch_policy_allows_clear_restrictions_under_branch_protection():
+    policy = BranchPolicy(enforcement="branch_protection", clear_restrictions=True)
+    assert policy.clear_restrictions is True
+
+
 def test_policy_config_parses_nested_branches():
     config = PolicyConfig(
         version=1,
