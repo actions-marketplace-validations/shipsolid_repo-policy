@@ -36,11 +36,16 @@ src/repo_policy/
 ├── audit.py                   read-only wrapper around apply.plan_branch, for audit/plan
 ├── render.py                   human-readable +/-/~/✓ diff rendering for `plan`
 ├── entrypoint.py               GitHub Actions INPUT_* env vars -> CLI argv, for the Docker Action
+├── repo_settings.py            orchestration for the repo-wide repo_settings section:
+│                                plan_repo_settings / apply_repo_settings
 └── policies/
     ├── pull_requests.py       PullRequestPolicy <-> branch-protection JSON <-> ruleset rule JSON
     ├── status_checks.py       StatusChecksPolicy <-> branch-protection JSON <-> ruleset rule JSON
     ├── branch_protection.py   full BranchPolicy <-> classic branch-protection payload
-    └── rulesets.py            full BranchPolicy <-> repository-ruleset payload
+    ├── rulesets.py            full BranchPolicy <-> repository-ruleset payload
+    └── repo_settings.py       RepoSettingsPolicy <-> 3 different GitHub endpoint shapes
+                                (flat PATCH, nested security_and_analysis PATCH, 3 independent
+                                GET/PUT toggle endpoints)
 ```
 
 `cli.py` is the only module that knows about Click, exit codes, or environment variables — every
@@ -67,6 +72,17 @@ can't drift between "branch protection" and "ruleset" mode.
   `require_last_push_approval`, which *are* fully cross-backend.
 - **`PullRequestPolicy`** / **`StatusChecksPolicy`** — the two fields whose desired state is more
   than a boolean.
+- **`RepoSettingsPolicy`** — an optional, repo-wide (not per-branch) section: `delete_branch_on_merge`,
+  `allow_update_branch`, `vulnerability_alerts`, `automated_security_fixes`,
+  `private_vulnerability_reporting`, `secret_scanning`, `secret_scanning_push_protection`. `None`
+  on any field means "not declared" (same modeling choice as `BranchPolicy`), and the whole section
+  can be `None` (not declared at all) — the most common case for every `policy.yml` written before
+  this feature existed, which makes zero repo-settings API calls. Unlike branch-level fields,
+  `repo_settings` does **not** participate in `strict` mode — there's no universal "permissive
+  baseline" that would be safe to auto-apply for e.g. `delete_branch_on_merge`, so this section is
+  managed-scope only, always. `automated_security_fixes: true` requires `vulnerability_alerts: true`
+  to also be declared — enforced by a model validator, since GitHub rejects enabling Dependabot
+  security updates before Dependabot alerts.
 - **Current state** is the *same* `BranchPolicy` type, populated by `branch_protection.from_api()`
   or `rulesets.from_api()` from a live GitHub API response — so `diff()` always compares two
   instances of one type, never a raw dict against a model. A branch with nothing configured
@@ -138,6 +154,16 @@ does not persist state outside the process it runs in.
   that's been removed from `policy.yml` — the classic branch protection API has no ownership
   metadata to identify what repo-policy created versus what a human configured by hand. Removing
   branch-protection management for a branch is a manual, GitHub-side action today.
+
+## Repo-Level Settings: the `unavailable` Outcome
+
+Two of the seven `repo_settings` fields can come back `unavailable` rather than `ok`/drifted:
+`secret_scanning`/`secret_scanning_push_protection` (422 = no GitHub Advanced Security license) and
+`private_vulnerability_reporting` (404 or 422 = repo not eligible, e.g. dependency graph disabled).
+`unavailable` is informational, not a compliance failure — it never sets `audit`/`plan`'s drift exit
+code, and `apply` reports it as a plain message rather than an error. `GitHubClient._request` gained
+an `allow_422` parameter (mirroring the existing `allow_404`) specifically to make this
+distinguishable from a genuine API error.
 
 ## Failure Modes
 

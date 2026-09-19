@@ -62,12 +62,15 @@ class GitHubClient:
         json: dict | None = None,
         params: dict | None = None,
         allow_404: bool = False,
+        allow_422: bool = False,
     ) -> httpx.Response | None:
         attempt = 0
         while True:
             response = self._client.request(method, path, json=json, params=params)
 
             if response.status_code == 404 and allow_404:
+                return None
+            if response.status_code == 422 and allow_422:
                 return None
             if response.status_code < 400:
                 return response
@@ -113,6 +116,56 @@ class GitHubClient:
             method,
             f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection/required_signatures",
         )
+
+    def get_repo(self) -> dict:
+        response = self._request("GET", f"/repos/{self.owner}/{self.repo}")
+        return _expect_response(response).json()
+
+    def update_repo_settings(self, payload: dict) -> dict:
+        response = self._request("PATCH", f"/repos/{self.owner}/{self.repo}", json=payload)
+        return _expect_response(response).json()
+
+    def get_vulnerability_alerts(self) -> bool:
+        response = self._request(
+            "GET", f"/repos/{self.owner}/{self.repo}/vulnerability-alerts", allow_404=True
+        )
+        return response is not None
+
+    def enable_vulnerability_alerts(self) -> None:
+        self._request("PUT", f"/repos/{self.owner}/{self.repo}/vulnerability-alerts")
+
+    def get_automated_security_fixes(self) -> bool:
+        response = self._request(
+            "GET", f"/repos/{self.owner}/{self.repo}/automated-security-fixes", allow_404=True
+        )
+        return response is not None and bool(response.json().get("enabled", False))
+
+    def enable_automated_security_fixes(self) -> None:
+        self._request("PUT", f"/repos/{self.owner}/{self.repo}/automated-security-fixes")
+
+    def get_private_vulnerability_reporting(self) -> bool | None:
+        """None means unavailable (404 or 422) -- not every repo is eligible."""
+        response = self._request(
+            "GET", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting",
+            allow_404=True, allow_422=True,
+        )
+        return bool(response.json().get("enabled", True)) if response is not None else None
+
+    def enable_private_vulnerability_reporting(self) -> bool:
+        """Returns False (meaning unavailable) on 422; True on success."""
+        response = self._request(
+            "PUT", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting", allow_422=True
+        )
+        return response is not None
+
+    def update_security_and_analysis(self, payload: dict) -> dict | None:
+        """Returns None when GitHub Advanced Security isn't licensed on this repo (422) -- an
+        expected, non-error outcome, not every repo has it. Any other failure still raises."""
+        response = self._request(
+            "PATCH", f"/repos/{self.owner}/{self.repo}",
+            json={"security_and_analysis": payload}, allow_422=True,
+        )
+        return response.json() if response is not None else None
 
     def list_rulesets(self) -> list[dict]:
         results: list[dict] = []

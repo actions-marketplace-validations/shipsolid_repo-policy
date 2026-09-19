@@ -10,7 +10,8 @@ from repo_policy.apply import apply_all, prefetch_rulesets, prune_rulesets
 from repo_policy.audit import audit_all
 from repo_policy.config import ConfigError, load_policy
 from repo_policy.github_client import GitHubAPIError, GitHubClient
-from repo_policy.render import render_plan
+from repo_policy.render import render_plan, render_repo_settings
+from repo_policy.repo_settings import apply_repo_settings, plan_repo_settings
 
 EXIT_OK = 0
 EXIT_DRIFT = 1
@@ -84,6 +85,7 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
     try:
         with GitHubClient(token=_resolve_token(token), owner=owner, repo=name) as client:
             results = audit_all(client, config)
+            repo_settings_result = plan_repo_settings(client, config)
     except GitHubAPIError as exc:
         click.echo(str(exc), err=True)
         return EXIT_API_ERROR
@@ -95,6 +97,13 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
         elif not result.compliant:
             click.echo(f"{result.branch}: {len(result.changes)} change(s) required")
         any_drift = any_drift or not result.compliant
+
+    if repo_settings_result.changes:
+        if render:
+            click.echo(render_repo_settings(resolved_repo, repo_settings_result))
+        else:
+            click.echo(f"repo settings: {len(repo_settings_result.changes)} change(s) required")
+        any_drift = True
 
     if not any_drift and not render:
         click.echo(f"{resolved_repo} is compliant.")
@@ -138,6 +147,7 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
             if config.strict:
                 for deleted_name in prune_rulesets(client, config, rulesets_cache=rulesets_cache):
                     click.echo(f"- removed orphaned ruleset {deleted_name}")
+            repo_settings_result = apply_repo_settings(client, config)
     except GitHubAPIError as exc:
         click.echo(str(exc), err=True)
         sys.exit(EXIT_API_ERROR)
@@ -147,4 +157,10 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
             click.echo(f"{result.branch}: applied {len(result.changes)} change(s)")
         else:
             click.echo(f"{result.branch}: no changes needed")
+
+    if repo_settings_result.applied:
+        click.echo(f"repo settings: applied {len(repo_settings_result.changes)} change(s)")
+    for field_name in repo_settings_result.unavailable:
+        click.echo(f"repo settings: {field_name} unavailable on this repository")
+
     sys.exit(EXIT_OK)

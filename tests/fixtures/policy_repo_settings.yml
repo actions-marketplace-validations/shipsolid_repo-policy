@@ -1,0 +1,6 @@
+version: 1
+
+branches: {}
+
+repo_settings:
+  delete_branch_on_merge: true

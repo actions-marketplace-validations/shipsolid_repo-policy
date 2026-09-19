@@ -238,3 +238,149 @@ def test_delete_ruleset_calls_delete(client):
     )
     client.delete_ruleset(5)
     assert route.called
+
+
+@respx.mock
+def test_get_repo(client):
+    respx.get("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(200, json={"default_branch": "main", "delete_branch_on_merge": False})
+    )
+    data = client.get_repo()
+    assert data["default_branch"] == "main"
+
+
+@respx.mock
+def test_update_repo_settings(client):
+    route = respx.patch("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(200, json={"delete_branch_on_merge": True})
+    )
+    data = client.update_repo_settings({"delete_branch_on_merge": True})
+    assert data["delete_branch_on_merge"] is True
+    assert route.calls[0].request.content == b'{"delete_branch_on_merge":true}'
+
+
+@respx.mock
+def test_get_vulnerability_alerts_enabled(client):
+    respx.get("https://api.github.com/repos/acme/widgets/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    assert client.get_vulnerability_alerts() is True
+
+
+@respx.mock
+def test_get_vulnerability_alerts_disabled(client):
+    respx.get("https://api.github.com/repos/acme/widgets/vulnerability-alerts").mock(
+        return_value=httpx.Response(404)
+    )
+    assert client.get_vulnerability_alerts() is False
+
+
+@respx.mock
+def test_enable_vulnerability_alerts(client):
+    route = respx.put("https://api.github.com/repos/acme/widgets/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    client.enable_vulnerability_alerts()
+    assert route.called
+
+
+@respx.mock
+def test_get_automated_security_fixes_enabled(client):
+    respx.get("https://api.github.com/repos/acme/widgets/automated-security-fixes").mock(
+        return_value=httpx.Response(200, json={"enabled": True})
+    )
+    assert client.get_automated_security_fixes() is True
+
+
+@respx.mock
+def test_get_automated_security_fixes_disabled_via_404(client):
+    respx.get("https://api.github.com/repos/acme/widgets/automated-security-fixes").mock(
+        return_value=httpx.Response(404)
+    )
+    assert client.get_automated_security_fixes() is False
+
+
+@respx.mock
+def test_enable_automated_security_fixes(client):
+    route = respx.put("https://api.github.com/repos/acme/widgets/automated-security-fixes").mock(
+        return_value=httpx.Response(204)
+    )
+    client.enable_automated_security_fixes()
+    assert route.called
+
+
+@respx.mock
+def test_request_allow_422_returns_none_on_422(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    response = client._request(
+        "GET", "/repos/acme/widgets/private-vulnerability-reporting", allow_422=True
+    )
+    assert response is None
+
+
+@respx.mock
+def test_request_without_allow_422_raises_on_422(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    with pytest.raises(GitHubAPIError):
+        client._request("GET", "/repos/acme/widgets/private-vulnerability-reporting")
+
+
+@respx.mock
+def test_get_private_vulnerability_reporting_enabled(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(200, json={"enabled": True})
+    )
+    assert client.get_private_vulnerability_reporting() is True
+
+
+@respx.mock
+def test_get_private_vulnerability_reporting_unavailable_via_404(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(404)
+    )
+    assert client.get_private_vulnerability_reporting() is None
+
+
+@respx.mock
+def test_get_private_vulnerability_reporting_unavailable_via_422(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    assert client.get_private_vulnerability_reporting() is None
+
+
+@respx.mock
+def test_enable_private_vulnerability_reporting_succeeds(client):
+    respx.put("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(204)
+    )
+    assert client.enable_private_vulnerability_reporting() is True
+
+
+@respx.mock
+def test_enable_private_vulnerability_reporting_unavailable_via_422(client):
+    respx.put("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    assert client.enable_private_vulnerability_reporting() is False
+
+
+@respx.mock
+def test_update_security_and_analysis_succeeds(client):
+    respx.patch("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(200, json={"security_and_analysis": {"secret_scanning": {"status": "enabled"}}})
+    )
+    data = client.update_security_and_analysis({"secret_scanning": {"status": "enabled"}})
+    assert data is not None
+
+
+@respx.mock
+def test_update_security_and_analysis_unavailable_via_422(client):
+    respx.patch("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(422, json={"message": "GHAS not enabled"})
+    )
+    assert client.update_security_and_analysis({"secret_scanning": {"status": "enabled"}}) is None
