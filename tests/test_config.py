@@ -24,3 +24,11 @@ def test_load_policy_raises_on_empty_file(tmp_path):
     empty.write_text("")
     with pytest.raises(ConfigError, match="empty"):
         load_policy(empty)
+
+
+def test_load_policy_gives_actionable_message_when_top_level_is_not_a_mapping(tmp_path):
+    config_path = tmp_path / "policy.yml"
+    config_path.write_text("- not\n- a\n- mapping\n")
+    with pytest.raises(ConfigError) as exc_info:
+        load_policy(config_path)
+    assert "<policy file root>" in str(exc_info.value)

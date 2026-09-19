@@ -40,6 +40,6 @@ def load_policy(path: str | Path) -> PolicyConfig:
 def _format_validation_error(path: Path, exc: ValidationError) -> str:
     lines = [f"invalid policy config in {path}:"]
     for error in exc.errors():
-        location = ".".join(str(part) for part in error["loc"])
+        location = ".".join(str(part) for part in error["loc"]) or "<policy file root>"
         lines.append(f"  - {location}: {error['msg']}")
     return "\n".join(lines)
