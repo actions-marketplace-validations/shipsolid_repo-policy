@@ -1,6 +1,171 @@
 # CHANGELOG
 
 
+## v0.4.4 (2026-09-19)
+
+### Bug Fixes
+
+- _is_empty dispatches on isinstance, not a shared .required attribute name
+  ([`2eacaa5`](https://github.com/shipsolid/repo-policy/commit/2eacaa5b0092719655753b47d69216995ff52460))
+
+hasattr(value, "required") was standing in for "is this a PullRequestPolicy or a StatusChecksPolicy"
+  -- a naming coincidence, not a type check. A future value type exposing an unrelated .required
+  attribute wouldn't just be misclassified, it would crash: the isinstance(required, bool) branch
+  calls len() on the fallback path, which raises TypeError for anything that's neither bool nor
+  sized. Explicit isinstance checks preserve identical behavior for both current cases.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Honor GitHub's Retry-After header instead of blind exponential backoff
+  ([`f2c3dea`](https://github.com/shipsolid/repo-policy/commit/f2c3deafb6604c260bcc3bd7662c177eee96504d))
+
+The fixed exponential backoff (1s/2s/4s by default) ignored Retry-After on secondary-rate-limit
+  429/403 responses, so a sustained rate-limit window could exhaust all retry attempts well before
+  GitHub's own requested wait cleared, aborting the run when a header-aware wait would have
+  succeeded.
+
+Deliberately does not honor X-RateLimit-Reset (the primary rate limit) -- that reset can be up to an
+  hour away, and silently blocking a CLI invocation for that long is a product decision (fail fast
+  with a clear error vs. block), not a pure reliability fix. Falls back to the existing exponential
+  backoff when Retry-After is absent or unparseable.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve enforcement mode and bypass_actors on ruleset updates
+  ([`d7a82af`](https://github.com/shipsolid/repo-policy/commit/d7a82af5102f38869144f636e40a57a850c07483))
+
+Same bug class as the earlier strict_required_status_checks_policy fix (f291a05), and it wasn't
+  fully closed: to_api_payload() also hardcoded "enforcement": "active" unconditionally and never
+  carried bypass_actors through at all. Since ruleset PUT/POST is a full-object replace, either gap
+  meant an unrelated declared change (e.g. bumping approvals) would silently re-activate a ruleset a
+  human had flipped to "evaluate" (dry-run) mode, or wipe out bypass permissions a security team had
+  configured -- neither ever surfaced by diff/plan/audit, since neither field is modeled.
+
+Both are now read through from current_raw the same way, defaulting to "active"/[] only when there's
+  no current state to read (first creation).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Pullrequestpolicy/statuscheckspolicy are frozen, fixing Change's hashability for pull_requests
+  ([`72fcafb`](https://github.com/shipsolid/repo-policy/commit/72fcafbb2ab563244816c714ad3f8ea5d0f548ff))
+
+Change is @dataclass(frozen=True), whose auto-derived __hash__ requires every field to be hashable
+  -- but current_value/desired_value can hold PullRequestPolicy/StatusChecksPolicy instances, and
+  plain (non-frozen) pydantic BaseModel instances aren't hashable. Nothing currently hashes a
+  Change, so this was latent, but a real footgun for future code (e.g. dedup via a set).
+
+Made both models frozen: pydantic's frozen models are both immutable and (when every field is
+  hashable) hashable, matching Change's own frozen, snapshot-value-object nature. Confirmed no code
+  path mutates either model in place anywhere in this codebase, so this is behavior-preserving.
+
+Fully fixes it for pull_requests (all-scalar fields). status_checks stays technically unhashable
+  regardless -- StatusChecksPolicy.required is a list, and a list field makes a frozen model's
+  derived __hash__ raise TypeError just the same. Freezing it still adds the immutability guarantee;
+  changing `required` to a tuple to close the remaining gap would ripple into a public field's type
+  and at least one test's equality assertion for a still-latent, never-triggered edge case -- left
+  alone as not worth that footprint.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Replace dangling plan-doc references with commit hashes
+  ([`3cd2728`](https://github.com/shipsolid/repo-policy/commit/3cd2728799abf6978463d51f4fdb5b2dfbf6849e))
+
+Both comments cited docs/superpowers/plans/2026-09-19-*.md files that no longer exist -- this
+  project deletes plan docs once the work they guided ships, which leaves any comment pointing at
+  one a dead end. Commit hashes are durable; point to those instead.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Refactoring
+
+- Dedupe the enforce_admins/lock_branch/etc. permissive-value table
+  ([`e83920b`](https://github.com/shipsolid/repo-policy/commit/e83920b9b7baa1d43baddaca7b6e31e25172d706))
+
+The permissive (no-op) value for the 5 ruleset-unsupported fields (enforce_admins,
+  required_conversation_resolution, lock_branch, allow_fork_syncing, clear_restrictions) was
+  hand-copied in 3 places: models._RULESET_UNSUPPORTED_FIELDS (the validator's source of truth),
+  diff._SCHEMA_DEFAULTS, and twice more inline in policies/rulesets.py's from_api(). All three now
+  read from models._RULESET_UNSUPPORTED_FIELDS -- the only module with no dependency on the other
+  two, so no import cycle. Left the broader "fully permissive BranchPolicy/PullRequestPolicy
+  literal" consolidation alone (policies/branch_protection.py and rulesets.py's from_api(None), and
+  pull_requests.py's from_*(None)) -- unlike this 5-key subset, those also share a nested
+  PullRequestPolicy instance, and having multiple BranchPolicy objects reference the exact same
+  PullRequestPolicy by identity would reintroduce the shared-mutable-state class of bug the
+  _merge_pull_requests fix (see the resolve_desired commit) specifically eliminated. Not worth that
+  risk for a cosmetic DRY win on rarely-changed, self-documenting literals.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Derive BranchResult.applied instead of setting it at each call site
+  ([`5a09d1c`](https://github.com/shipsolid/repo-policy/commit/5a09d1c55351702390ea9c3c226080304d63cc0e))
+
+applied was always exactly bool(changes) at both of BranchResult's construction sites -- now a
+  @property, matching the pattern already used for AuditResult.compliant. Behavior-preserving: no
+  test or caller ever passed applied= explicitly.
+
+Skipped a related dedup: having apply_all batch detect_stale_branch_protection once (mirroring
+  audit_all) and pass membership into apply_branch, instead of apply_branch re-deriving the
+  single-branch predicate inline. Reverted after confirming it breaks apply_branch's
+  standalone-callable contract --
+  test_apply_branch_flags_stale_branch_protection_for_ruleset_enforced_branch calls apply_branch
+  directly (not through apply_all) and relies on it self-detecting staleness. The two predicates
+  read identically but intentionally live at different scopes; not a safe dedup.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Extract _build_client, shared by _run_check and apply
+  ([`30905b1`](https://github.com/shipsolid/repo-policy/commit/30905b11698e82c170189190cc474180220b301b))
+
+apply() re-implemented _run_check's exact load_policy -> _resolve_repo -> _split_repo ->
+  GitHubClient(...) setup sequence inline instead of sharing it, a real drift risk (e.g. a future
+  GitHubClient constructor change or _resolve_token behavior change would need updating in two
+  places). Extracted _build_client(config_path, repo, token) -> (PolicyConfig, str, GitHubClient),
+  covering exactly the setup with no command-specific behavior; ConfigError and click.ClickException
+  both still propagate uncaught so each caller keeps its own exit-code idiom (_run_check returns
+  EXIT_CONFIG_ERROR, apply calls sys.exit(EXIT_CONFIG_ERROR)).
+
+Caught during this refactor: `with client:` (no `as`) doesn't rebind to whatever __enter__() returns
+  -- harmless in production since GitHubClient.__enter__ returns self, but it silently broke every
+  mocked CLI test, which configure behavior on mock_client_cls.return_value.__enter__ .return_value
+  and expect the code under test to operate on that object. Fixed with `with client as client:`,
+  caught by running the full suite before committing.
+
+Skipped per independent review: sharing the --config/--repo/--token option decorator across
+  audit/plan/apply (inert boilerplate at 3 call sites, not worth a shared decorator) and merging
+  render_plan/render_repo_settings (the two functions differ in load-bearing ways -- compliant-field
+  listing, unavailable-section, strict-vs-tolerant label lookup -- that a shared abstraction would
+  paper over).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Render.py drives field iteration from diff._FIELDS, labels fail safe
+  ([`2e4f49a`](https://github.com/shipsolid/repo-policy/commit/2e4f49a1c0a135d3e13a864a3fa5781aa541e669))
+
+_LABELS was a hand-maintained duplicate of diff._FIELDS' key set with no safety net -- render_plan
+  indexed it with a bare _LABELS[change.field], so a future BranchPolicy field added to _FIELDS
+  without a matching _LABELS entry would raise KeyError the first time it produced a Change. Now
+  iterates _FIELDS directly (matching render_repo_settings' already-tolerant
+  _REPO_SETTINGS_LABELS.get(field, field) pattern) and falls back to the raw field name instead of
+  crashing.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Reuse _unwrap for GitHub's {"enabled": bool} response shape
+  ([`37e4829`](https://github.com/shipsolid/repo-policy/commit/37e4829c290a06867dc5ee261572decfc04db14c))
+
+get_required_signatures, get_automated_security_fixes, and get_private_vulnerability_reporting each
+  hand-rolled their own inline .get("enabled", default) unwrap instead of reusing _unwrap, which
+  already existed for exactly this GitHub response convention but lived in
+  policies/branch_protection.py, several layers away from github_client.py's response parsing.
+  Relocated _unwrap into github_client.py (where 3 of its 4 use sites already lived, and where it
+  belongs conceptually -- parsing GitHub's raw JSON shapes); policies/branch_protection.py now
+  imports it.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.4.3 (2026-09-19)
 
 ### Bug Fixes
