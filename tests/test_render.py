@@ -26,3 +26,28 @@ def test_render_plan_singular_change_count():
     changes = [Change(field="linear_history", current_value=False, desired_value=True, action="add")]
     output = render_plan("acme/widgets", "main", changes)
     assert "1 change required." in output
+
+
+def test_render_plan_shows_enforce_admins_label():
+    changes = [Change(field="enforce_admins", current_value=False, desired_value=True, action="add")]
+    output = render_plan("acme/widgets", "main", changes)
+    assert "+ Admin enforcement" in output
+
+
+def test_render_plan_shows_conversation_resolution_label():
+    changes = [Change(field="required_conversation_resolution", current_value=False,
+                       desired_value=True, action="add")]
+    output = render_plan("acme/widgets", "main", changes)
+    assert "+ Conversation resolution" in output
+
+
+def test_render_plan_shows_lock_branch_label():
+    changes = [Change(field="lock_branch", current_value=False, desired_value=True, action="add")]
+    output = render_plan("acme/widgets", "main", changes)
+    assert "+ Branch lock" in output
+
+
+def test_render_plan_shows_fork_syncing_label():
+    changes = [Change(field="allow_fork_syncing", current_value=True, desired_value=False, action="add")]
+    output = render_plan("acme/widgets", "main", changes)
+    assert "+ Fork syncing" in output

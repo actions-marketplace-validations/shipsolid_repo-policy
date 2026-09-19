@@ -12,6 +12,7 @@ def test_from_api_none_means_fully_permissive():
     assert result.linear_history is False
     assert result.allow_force_push is True
     assert result.allow_deletion is True
+    assert result.enforce_admins is False
 
 
 def test_from_api_reads_wrapped_booleans():
@@ -21,6 +22,7 @@ def test_from_api_reads_wrapped_booleans():
         "required_linear_history": {"enabled": True},
         "allow_force_pushes": {"enabled": False},
         "allow_deletions": {"enabled": False},
+        "enforce_admins": {"enabled": True},
     }
     result = branch_protection.from_api(data, signed_commits=True)
     assert result.pull_requests == PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
@@ -29,6 +31,7 @@ def test_from_api_reads_wrapped_booleans():
     assert result.allow_force_push is False
     assert result.allow_deletion is False
     assert result.signed_commits is True
+    assert result.enforce_admins is True
 
 
 def test_to_api_payload_builds_full_replace_body():
@@ -49,32 +52,81 @@ def test_to_api_payload_builds_full_replace_body():
     assert payload["allow_deletions"] is False
 
 
-def test_to_api_payload_preserves_unmodeled_current_fields():
-    current_raw = {
-        "enforce_admins": {"enabled": True},
-        "restrictions": {"users": ["octocat"], "teams": []},
-    }
+def test_to_api_payload_preserves_restrictions_from_current_state():
+    """restrictions is the one PUT-required field the v1 schema still doesn't model."""
+    current_raw = {"restrictions": {"users": ["octocat"], "teams": []}}
     resolved = BranchPolicy(
         pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
         linear_history=False,
         allow_force_push=True,
         allow_deletion=True,
+        enforce_admins=False,
     )
     payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
-    assert payload["enforce_admins"] is True
     assert payload["restrictions"] == {"users": ["octocat"], "teams": []}
 
 
-def test_to_api_payload_preserves_unmodeled_nested_review_and_check_fields():
+def test_to_api_payload_writes_enforce_admins_from_resolved_policy():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=False,
+        allow_force_push=True,
+        allow_deletion=True,
+        enforce_admins=True,
+    )
+    payload = branch_protection.to_api_payload(resolved, current_raw={"enforce_admins": {"enabled": False}})
+    assert payload["enforce_admins"] is True  # resolved wins, current_raw is ignored for this field now
+
+
+def test_to_api_payload_writes_required_conversation_resolution():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=False,
+        allow_force_push=True,
+        allow_deletion=True,
+        enforce_admins=False,
+        required_conversation_resolution=True,
+    )
+    payload = branch_protection.to_api_payload(resolved, current_raw=None)
+    assert payload["required_conversation_resolution"] is True
+
+
+def test_to_api_payload_writes_lock_branch():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=False,
+        allow_force_push=True,
+        allow_deletion=True,
+        enforce_admins=False,
+        required_conversation_resolution=False,
+        lock_branch=True,
+    )
+    payload = branch_protection.to_api_payload(resolved, current_raw=None)
+    assert payload["lock_branch"] is True
+
+
+def test_to_api_payload_writes_allow_fork_syncing():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=False,
+        allow_force_push=True,
+        allow_deletion=True,
+        allow_fork_syncing=False,
+    )
+    payload = branch_protection.to_api_payload(resolved, current_raw=None)
+    assert payload["allow_fork_syncing"] is False
+
+
+def test_to_api_payload_preserves_unmodeled_status_check_strict_field():
     """Regression test: a targeted change to one declared field (allow_force_push) must not
-    silently reset dismiss_stale_reviews/require_last_push_approval/strict — fields repo-policy
-    doesn't model but a human may have set manually on GitHub."""
+    silently reset the status-check 'strict' (require branches up to date) setting — the one
+    remaining nested field repo-policy doesn't model but a human may have set manually on GitHub.
+    (dismiss_stale_reviews/require_last_push_approval used to be covered by this same test, but
+    became modeled fields — see tests/test_policies_pull_requests.py instead.)"""
     current_raw = {
         "required_pull_request_reviews": {
             "required_approving_review_count": 2,
             "require_code_owner_reviews": True,
-            "dismiss_stale_reviews": True,
-            "require_last_push_approval": True,
         },
         "required_status_checks": {"contexts": ["build"], "checks": [], "strict": True},
     }
@@ -86,8 +138,6 @@ def test_to_api_payload_preserves_unmodeled_nested_review_and_check_fields():
         allow_deletion=True,
     )
     payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
-    assert payload["required_pull_request_reviews"]["dismiss_stale_reviews"] is True
-    assert payload["required_pull_request_reviews"]["require_last_push_approval"] is True
     assert payload["required_status_checks"]["strict"] is True
 
 

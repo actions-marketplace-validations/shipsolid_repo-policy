@@ -4,10 +4,11 @@
 
 ## Now
 
-| Item                                            | Why it matters                                                                                                        | Status  | Target |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------- | ------ |
-| Real-world hardening from live-repo testing     | 3 real bugs found via live verification against a disposable repo (see `docs/test-strategy.md`) were fixed this cycle | shipped | v0.1.4 |
-| Document the `GITHUB_TOKEN` platform limitation | Every Action consumer would otherwise hit an unexplained 403 on first use                                             | shipped | v0.1.4 |
+| Item | Why it matters | Status | Target |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ |
+| Real-world hardening from live-repo testing | 3 real bugs found via live verification against a disposable repo (see `docs/test-strategy.md`) were fixed this cycle | shipped | v0.1.4 |
+| Document the `GITHUB_TOKEN` platform limitation | Every Action consumer would otherwise hit an unexplained 403 on first use | shipped | v0.1.4 |
+| Model the 6 previously-unenforced branch-protection fields | Closed a real coverage gap against a sibling tool's fixed baseline; `enforce_admins` in particular is the highest-impact single field repo-policy didn't enforce | shipped | TBD |
 
 ## Next
 
@@ -28,10 +29,6 @@
   and security-fix automation, private vulnerability reporting, `delete_branch_on_merge`,
   `allow_update_branch`. Out of scope today — repo-policy only manages branch protection/rulesets,
   not repo-wide settings.
-- Additional branch-protection fields repo-policy doesn't model yet: `enforce_admins`,
-  `dismiss_stale_reviews`, `require_last_push_approval`, `required_conversation_resolution`,
-  `lock_branch`, `allow_fork_syncing`. Currently read through from whatever's already set on the
-  branch rather than enforced — see `to_api_payload()` / `pull_requests.to_branch_protection()`.
 
 ## Explicitly not doing
 

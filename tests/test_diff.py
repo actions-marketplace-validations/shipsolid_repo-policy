@@ -8,6 +8,10 @@ PERMISSIVE = BranchPolicy(
     linear_history=False,
     allow_force_push=True,
     allow_deletion=True,
+    enforce_admins=False,
+    required_conversation_resolution=False,
+    lock_branch=False,
+    allow_fork_syncing=True,
 )
 
 
@@ -42,6 +46,16 @@ def test_diff_detects_remove():
     changes = diff(desired, current)
     assert len(changes) == 1
     assert changes[0].action == "remove"
+
+
+def test_allow_fork_syncing_inverted_polarity_add_vs_remove():
+    """Mirrors the existing allow_force_push/allow_deletion polarity tests: False is the
+    restrictive value here (True is GitHub's own permissive default), same as those two."""
+    current = PERMISSIVE.model_copy(update={"allow_fork_syncing": False})
+    desired = PERMISSIVE.model_copy(update={"allow_fork_syncing": True})
+    changes = diff(desired, current)
+    assert len(changes) == 1
+    assert changes[0].action == "remove"  # restriction is being lifted
 
 
 def test_resolve_desired_managed_scope_inherits_current_for_unset_fields():

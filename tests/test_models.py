@@ -22,6 +22,51 @@ def test_branch_policy_rejects_unknown_enforcement():
         BranchPolicy(enforcement="bogus")
 
 
+def test_branch_policy_rejects_enforce_admins_under_ruleset():
+    with pytest.raises(ValidationError, match="enforce_admins"):
+        BranchPolicy(enforcement="ruleset", enforce_admins=True)
+
+
+def test_branch_policy_allows_enforce_admins_under_branch_protection():
+    policy = BranchPolicy(enforcement="branch_protection", enforce_admins=True)
+    assert policy.enforce_admins is True
+
+
+def test_branch_policy_allows_ruleset_enforcement_when_enforce_admins_unset():
+    policy = BranchPolicy(enforcement="ruleset")
+    assert policy.enforce_admins is None
+
+
+def test_branch_policy_rejects_required_conversation_resolution_under_ruleset():
+    with pytest.raises(ValidationError, match="required_conversation_resolution"):
+        BranchPolicy(enforcement="ruleset", required_conversation_resolution=True)
+
+
+def test_branch_policy_allows_required_conversation_resolution_under_branch_protection():
+    policy = BranchPolicy(enforcement="branch_protection", required_conversation_resolution=True)
+    assert policy.required_conversation_resolution is True
+
+
+def test_branch_policy_rejects_lock_branch_under_ruleset():
+    with pytest.raises(ValidationError, match="lock_branch"):
+        BranchPolicy(enforcement="ruleset", lock_branch=True)
+
+
+def test_branch_policy_allows_lock_branch_under_branch_protection():
+    policy = BranchPolicy(enforcement="branch_protection", lock_branch=True)
+    assert policy.lock_branch is True
+
+
+def test_branch_policy_rejects_allow_fork_syncing_under_ruleset():
+    with pytest.raises(ValidationError, match="allow_fork_syncing"):
+        BranchPolicy(enforcement="ruleset", allow_fork_syncing=False)
+
+
+def test_branch_policy_allows_allow_fork_syncing_under_branch_protection():
+    policy = BranchPolicy(enforcement="branch_protection", allow_fork_syncing=False)
+    assert policy.allow_fork_syncing is False
+
+
 def test_policy_config_parses_nested_branches():
     config = PolicyConfig(
         version=1,

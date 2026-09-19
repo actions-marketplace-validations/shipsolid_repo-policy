@@ -8,6 +8,26 @@ def test_ruleset_name_is_deterministic():
     assert rulesets.ruleset_name("main") == "repo-policy:main"
 
 
+def test_from_api_hardcodes_enforce_admins_false():
+    assert rulesets.from_api(None).enforce_admins is False
+    assert rulesets.from_api({"rules": []}).enforce_admins is False
+
+
+def test_from_api_hardcodes_required_conversation_resolution_false():
+    assert rulesets.from_api(None).required_conversation_resolution is False
+    assert rulesets.from_api({"rules": []}).required_conversation_resolution is False
+
+
+def test_from_api_hardcodes_lock_branch_false():
+    assert rulesets.from_api(None).lock_branch is False
+    assert rulesets.from_api({"rules": []}).lock_branch is False
+
+
+def test_from_api_hardcodes_allow_fork_syncing_true():
+    assert rulesets.from_api(None).allow_fork_syncing is True
+    assert rulesets.from_api({"rules": []}).allow_fork_syncing is True
+
+
 def test_from_api_none_means_fully_permissive():
     result = rulesets.from_api(None)
     assert result.pull_requests == PullRequestPolicy(required=False, approvals=0, code_owner_review=False)

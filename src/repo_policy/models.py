@@ -2,17 +2,31 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class PullRequestPolicy(BaseModel):
     required: bool = True
     approvals: int = 1
     code_owner_review: bool = False
+    dismiss_stale_reviews: bool = False
+    require_last_push_approval: bool = False
 
 
 class StatusChecksPolicy(BaseModel):
     required: list[str] = Field(default_factory=list)
+
+
+# field name -> its permissive (no-op) value under enforcement: ruleset. rulesets.from_api()
+# constructs internal "current state" BranchPolicy objects with these exact values for each field
+# below (never None) — the validator below must let that through unrejected, so it only rejects a
+# *non-permissive* (actually-restrictive) value, not merely a non-None one. A human writing
+# `enforce_admins: false` under `enforcement: ruleset` is a harmless no-op declaration and is
+# allowed; `enforce_admins: true` is a real restriction with no ruleset equivalent and is rejected.
+_RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
+    "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
+    "allow_fork_syncing": True,  # inverted polarity: True is the permissive value here
+}
 
 
 class BranchPolicy(BaseModel):
@@ -24,6 +38,26 @@ class BranchPolicy(BaseModel):
     linear_history: bool | None = None
     allow_force_push: bool | None = None
     allow_deletion: bool | None = None
+    enforce_admins: bool | None = None
+    required_conversation_resolution: bool | None = None
+    lock_branch: bool | None = None
+    allow_fork_syncing: bool | None = None
+
+    @model_validator(mode="after")
+    def _reject_ruleset_unsupported_fields(self) -> BranchPolicy:
+        if self.enforcement != "ruleset":
+            return self
+        set_fields = [
+            name for name, permissive in _RULESET_UNSUPPORTED_FIELDS.items()
+            if getattr(self, name) not in (None, permissive)
+        ]
+        if set_fields:
+            raise ValueError(
+                f"{', '.join(set_fields)} not supported under enforcement: ruleset "
+                "(no GitHub Rulesets equivalent) -- use enforcement: branch_protection, "
+                "or remove these fields"
+            )
+        return self
 
 
 class PolicyConfig(BaseModel):
