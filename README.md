@@ -40,6 +40,18 @@ repo-policy plan --repo acme/widgets
 repo-policy apply --repo acme/widgets
 ```
 
+## CLI Reference
+
+| Command | Flags | Behavior | Exit codes |
+|---|---|---|---|
+| `validate` | `--config` (default `policy.yml`) | Parses and schema-validates the policy file only; no network calls | 0 valid, 2 invalid |
+| `audit` | `--config`, `--repo`, `--token` | Read-only compliance check | 0 compliant, 1 drift found, 2 invalid config, 3 API/auth error |
+| `plan` | `--config`, `--repo`, `--token` | Same diff engine as `audit`, renders a human-readable +/-/~/✓ preview | same as `audit` |
+| `apply` | `--config`, `--repo`, `--token` | Executes only the changes `plan` would show | 0 success (incl. no-op), 2 invalid config, 3 API/auth error |
+
+**Token resolution order:** `--token` → `GITHUB_TOKEN` → `GH_TOKEN`. **Repo resolution order:**
+`--repo owner/name` → `$GITHUB_REPOSITORY` → the local git `origin` remote.
+
 ## GitHub Action
 
 ```yaml
@@ -65,8 +77,8 @@ convention `actions/checkout` and similar Actions use.
 
 Every declared branch is diffed against live GitHub state and reconciled through one of two
 backends, selected per branch with `enforcement: branch_protection | ruleset` (default
-`branch_protection`). See [the design spec](docs/superpowers/specs/2026-09-19-repo-policy-design.md)
-for the full schema, safety model, and known v1 limitations.
+`branch_protection`). See [ARCHITECTURE.md](ARCHITECTURE.md) for the full data flow, safety model,
+and known v1 limitations, and [docs/adrs/](docs/adrs/) for why it's built this way.
 
 ## Exit codes
 
@@ -76,6 +88,16 @@ for the full schema, safety model, and known v1 limitations.
 | 1 | Drift detected (`audit`/`plan`) |
 | 2 | Invalid `policy.yml` |
 | 3 | GitHub API or auth error |
+
+## More docs
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — design, data flow, safety model
+- [docs/adrs/](docs/adrs/) — why the key decisions were made
+- [docs/ci-cd.md](docs/ci-cd.md) — release pipeline, PyPI publishing, the `v0` tag
+- [docs/test-strategy.md](docs/test-strategy.md) — what's tested, and what mocking alone can't catch
+- [docs/troubleshooting.md](docs/troubleshooting.md) · [FAQ.md](FAQ.md) · [SUPPORT.md](SUPPORT.md)
+- [SECURITY.md](SECURITY.md) — token permissions and threat model
+- [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 

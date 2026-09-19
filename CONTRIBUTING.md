@@ -1,9 +1,31 @@
 # Contributing
 
+## Prerequisites
+
+- Python 3.10+
+- No other runtime dependency — the test suite mocks every GitHub API call (`respx`); you do not
+  need a real GitHub token to develop or run tests.
+- `docker` only if you're changing `Dockerfile`/`action.yml` and want to build the Action image
+  locally.
+
 ## Setup
 
 ```bash
 pip install -e ".[dev]"
+```
+
+## Repository Structure
+
+```
+src/repo_policy/       the package — see ARCHITECTURE.md for what each module owns
+tests/                 one test file per source module, plus test_idempotency.py and
+                       test_policies_parity.py (cross-cutting regression guards)
+docs/adrs/             why key decisions were made
+docs/ci-cd.md          release pipeline
+docs/test-strategy.md  what's tested and why
+docs/troubleshooting.md
+action.yml, Dockerfile the GitHub Action
+.github/workflows/     ci.yml (lint/typecheck/test), release.yml (semantic-release + PyPI)
 ```
 
 ## Before opening a PR
