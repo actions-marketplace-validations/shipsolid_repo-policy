@@ -92,6 +92,16 @@ class RepoSettingsPolicy(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _secret_scanning_push_protection_requires_secret_scanning(self) -> RepoSettingsPolicy:
+        if self.secret_scanning_push_protection is True and self.secret_scanning is not True:
+            raise ValueError(
+                "secret_scanning_push_protection: true requires secret_scanning: true to also be "
+                "declared -- GitHub rejects enabling push protection before secret scanning is "
+                "enabled"
+            )
+        return self
+
 
 class PolicyConfig(BaseModel):
     version: int

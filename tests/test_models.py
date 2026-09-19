@@ -157,3 +157,18 @@ def test_repo_settings_rejects_automated_security_fixes_with_vulnerability_alert
 def test_repo_settings_allows_automated_security_fixes_with_vulnerability_alerts_true():
     policy = RepoSettingsPolicy(automated_security_fixes=True, vulnerability_alerts=True)
     assert policy.automated_security_fixes is True
+
+
+def test_repo_settings_rejects_secret_scanning_push_protection_without_secret_scanning():
+    with pytest.raises(ValidationError, match="secret_scanning"):
+        RepoSettingsPolicy(secret_scanning_push_protection=True)
+
+
+def test_repo_settings_rejects_secret_scanning_push_protection_with_secret_scanning_false():
+    with pytest.raises(ValidationError, match="secret_scanning"):
+        RepoSettingsPolicy(secret_scanning_push_protection=True, secret_scanning=False)
+
+
+def test_repo_settings_allows_secret_scanning_push_protection_with_secret_scanning_true():
+    policy = RepoSettingsPolicy(secret_scanning_push_protection=True, secret_scanning=True)
+    assert policy.secret_scanning_push_protection is True
