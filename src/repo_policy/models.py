@@ -25,8 +25,7 @@ class StatusChecksPolicy(BaseModel):
 # allowed; `enforce_admins: true` is a real restriction with no ruleset equivalent and is rejected.
 _RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
     "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
-    "allow_fork_syncing": True,  # inverted polarity: True is the permissive value here
-    "clear_restrictions": True,  # True is the permissive value here too: no restriction in effect
+    "allow_fork_syncing": False, "clear_restrictions": True,
 }
 
 
@@ -58,6 +57,18 @@ class BranchPolicy(BaseModel):
                 f"{', '.join(set_fields)} not supported under enforcement: ruleset "
                 "(no GitHub Rulesets equivalent) -- use enforcement: branch_protection, "
                 "or remove these fields"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _allow_fork_syncing_requires_lock_branch(self) -> BranchPolicy:
+        if self.enforcement != "branch_protection":
+            return self
+        if self.allow_fork_syncing is True and self.lock_branch is not True:
+            raise ValueError(
+                "allow_fork_syncing: true requires lock_branch: true to also be declared -- "
+                "GitHub silently resets allow_fork_syncing back to false whenever lock_branch is "
+                "false (confirmed via live-repo verification, see docs/test-strategy.md)"
             )
         return self
 

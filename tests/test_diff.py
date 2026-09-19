@@ -11,7 +11,7 @@ PERMISSIVE = BranchPolicy(
     enforce_admins=False,
     required_conversation_resolution=False,
     lock_branch=False,
-    allow_fork_syncing=True,
+    allow_fork_syncing=False,
     clear_restrictions=True,
 )
 
@@ -49,14 +49,19 @@ def test_diff_detects_remove():
     assert changes[0].action == "remove"
 
 
-def test_allow_fork_syncing_inverted_polarity_add_vs_remove():
-    """Mirrors the existing allow_force_push/allow_deletion polarity tests: False is the
-    restrictive value here (True is GitHub's own permissive default), same as those two."""
-    current = PERMISSIVE.model_copy(update={"allow_fork_syncing": False})
-    desired = PERMISSIVE.model_copy(update={"allow_fork_syncing": True})
+def test_allow_fork_syncing_normal_polarity_add_when_paired_with_lock_branch():
+    """allow_fork_syncing is normal polarity, NOT inverted like allow_force_push/allow_deletion --
+    False/unset is the stable, always-safe default (see models.py's
+    _allow_fork_syncing_requires_lock_branch validator for why True alone is rejected at parse
+    time: GitHub silently discards allow_fork_syncing=true unless lock_branch=true is set in the
+    same state, confirmed via live-repo verification -- see docs/test-strategy.md). This test
+    exercises diff()'s classification for the one combination that's actually valid."""
+    current = PERMISSIVE.model_copy(update={"lock_branch": True})
+    desired = PERMISSIVE.model_copy(update={"lock_branch": True, "allow_fork_syncing": True})
     changes = diff(desired, current)
     assert len(changes) == 1
-    assert changes[0].action == "remove"  # restriction is being lifted
+    assert changes[0].field == "allow_fork_syncing"
+    assert changes[0].action == "add"
 
 
 def test_resolve_desired_managed_scope_inherits_current_for_unset_fields():

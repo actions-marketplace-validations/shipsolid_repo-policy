@@ -26,7 +26,7 @@ def from_api(data: dict | None) -> BranchPolicy:
             enforce_admins=False,
             required_conversation_resolution=False,
             lock_branch=False,
-            allow_fork_syncing=True,
+            allow_fork_syncing=False,
             clear_restrictions=True,
         )
     rules_by_type = {rule["type"]: rule for rule in data.get("rules", [])}
@@ -41,7 +41,7 @@ def from_api(data: dict | None) -> BranchPolicy:
         enforce_admins=False,
         required_conversation_resolution=False,
         lock_branch=False,
-        allow_fork_syncing=True,
+        allow_fork_syncing=False,
         clear_restrictions=True,
     )
 

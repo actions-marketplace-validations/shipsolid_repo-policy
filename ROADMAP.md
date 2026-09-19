@@ -11,6 +11,7 @@
 | Model the 6 previously-unenforced branch-protection fields | Closed a real coverage gap against a sibling tool's fixed baseline; `enforce_admins` in particular is the highest-impact single field repo-policy didn't enforce | shipped | TBD |
 | Model repo-level settings (7 fields: Dependabot, secret scanning, repo settings) | Second half of closing the gap against a sibling tool's fixed baseline — branch-protection fields (above) already shipped | shipped | TBD |
 | Model `clear_restrictions`, closing the last repo_security field gap | Every other field from the sibling tool's baseline was already covered by Phase 1/2; this was the one remaining gap | shipped | TBD |
+| Fix allow_fork_syncing's wrong permissive default | Found via live-repo verification: GitHub silently discards allow_fork_syncing: true unless lock_branch: true is also set, causing permanent phantom drift on any first-time apply | shipped | TBD |
 
 ## Next
 
