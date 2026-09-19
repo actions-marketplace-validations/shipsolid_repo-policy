@@ -122,3 +122,69 @@ def test_set_required_signatures_deletes_to_disable(client):
     ).mock(return_value=httpx.Response(204))
     client.set_required_signatures("main", False)
     assert route.called
+
+
+@respx.mock
+def test_list_rulesets_returns_summaries(client):
+    respx.get("https://api.github.com/repos/acme/widgets/rulesets").mock(
+        return_value=httpx.Response(200, json=[{"id": 1, "name": "repo-policy:main"}])
+    )
+    assert client.list_rulesets() == [{"id": 1, "name": "repo-policy:main"}]
+
+
+@respx.mock
+def test_get_ruleset_returns_full_detail(client):
+    respx.get("https://api.github.com/repos/acme/widgets/rulesets/1").mock(
+        return_value=httpx.Response(200, json={"id": 1, "name": "repo-policy:main", "rules": []})
+    )
+    assert client.get_ruleset(1) == {"id": 1, "name": "repo-policy:main", "rules": []}
+
+
+@respx.mock
+def test_find_ruleset_by_name_returns_full_detail_when_present(client):
+    respx.get("https://api.github.com/repos/acme/widgets/rulesets").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": 1, "name": "repo-policy:main"}, {"id": 2, "name": "other"}]
+        )
+    )
+    respx.get("https://api.github.com/repos/acme/widgets/rulesets/1").mock(
+        return_value=httpx.Response(200, json={"id": 1, "name": "repo-policy:main", "rules": []})
+    )
+    result = client.find_ruleset_by_name("repo-policy:main")
+    assert result == {"id": 1, "name": "repo-policy:main", "rules": []}
+
+
+@respx.mock
+def test_find_ruleset_by_name_returns_none_when_absent(client):
+    respx.get("https://api.github.com/repos/acme/widgets/rulesets").mock(
+        return_value=httpx.Response(200, json=[{"id": 2, "name": "other"}])
+    )
+    assert client.find_ruleset_by_name("repo-policy:main") is None
+
+
+@respx.mock
+def test_create_ruleset_posts_payload(client):
+    route = respx.post("https://api.github.com/repos/acme/widgets/rulesets").mock(
+        return_value=httpx.Response(201, json={"id": 5, "name": "repo-policy:main"})
+    )
+    result = client.create_ruleset({"name": "repo-policy:main"})
+    assert result["id"] == 5
+    assert route.called
+
+
+@respx.mock
+def test_update_ruleset_puts_payload(client):
+    route = respx.put("https://api.github.com/repos/acme/widgets/rulesets/5").mock(
+        return_value=httpx.Response(200, json={"id": 5, "name": "repo-policy:main"})
+    )
+    client.update_ruleset(5, {"name": "repo-policy:main"})
+    assert route.called
+
+
+@respx.mock
+def test_delete_ruleset_calls_delete(client):
+    route = respx.delete("https://api.github.com/repos/acme/widgets/rulesets/5").mock(
+        return_value=httpx.Response(204)
+    )
+    client.delete_ruleset(5)
+    assert route.called

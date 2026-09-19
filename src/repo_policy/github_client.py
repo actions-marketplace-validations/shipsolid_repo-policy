@@ -102,3 +102,34 @@ class GitHubClient:
             method,
             f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection/required_signatures",
         )
+
+    def list_rulesets(self) -> list[dict]:
+        response = self._request("GET", f"/repos/{self.owner}/{self.repo}/rulesets")
+        assert response is not None
+        return response.json()
+
+    def get_ruleset(self, ruleset_id: int) -> dict:
+        response = self._request("GET", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}")
+        assert response is not None
+        return response.json()
+
+    def find_ruleset_by_name(self, name: str) -> dict | None:
+        for summary in self.list_rulesets():
+            if summary["name"] == name:
+                return self.get_ruleset(summary["id"])
+        return None
+
+    def create_ruleset(self, payload: dict) -> dict:
+        response = self._request("POST", f"/repos/{self.owner}/{self.repo}/rulesets", json=payload)
+        assert response is not None
+        return response.json()
+
+    def update_ruleset(self, ruleset_id: int, payload: dict) -> dict:
+        response = self._request(
+            "PUT", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}", json=payload
+        )
+        assert response is not None
+        return response.json()
+
+    def delete_ruleset(self, ruleset_id: int) -> None:
+        self._request("DELETE", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}")
