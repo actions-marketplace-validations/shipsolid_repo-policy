@@ -19,7 +19,12 @@ EXIT_API_ERROR = 3
 
 
 def _resolve_token(token: str | None) -> str:
-    return token or os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    resolved = token or os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not resolved:
+        raise click.ClickException(
+            "no GitHub token found; pass --token or set GITHUB_TOKEN/GH_TOKEN"
+        )
+    return resolved
 
 
 def _resolve_repo(repo: str | None) -> str:
