@@ -7,6 +7,7 @@ from repo_policy.models import PolicyConfig
 from repo_policy.policies.repo_settings import (
     RepoSettingChange,
     diff_flat_settings,
+    diff_toggle,
     to_flat_settings_payload,
 )
 
@@ -28,6 +29,11 @@ def plan_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSettin
     result = RepoSettingsResult()
     current_repo = client.get_repo()
     result.changes.extend(diff_flat_settings(current_repo, desired))
+
+    if desired.vulnerability_alerts is not None:
+        current = client.get_vulnerability_alerts()
+        result.changes.extend(diff_toggle("vulnerability_alerts", current, desired.vulnerability_alerts))
+
     return result
 
 
@@ -41,6 +47,10 @@ def apply_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSetti
     flat_changes = [c for c in result.changes if c.field in ("delete_branch_on_merge", "allow_update_branch")]
     if flat_changes:
         client.update_repo_settings(to_flat_settings_payload(flat_changes))
+
+    changed_fields = {c.field for c in result.changes}
+    if "vulnerability_alerts" in changed_fields:
+        client.enable_vulnerability_alerts()
 
     result.applied = bool(result.changes)
     return result

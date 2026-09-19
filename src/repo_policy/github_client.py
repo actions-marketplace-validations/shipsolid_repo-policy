@@ -122,6 +122,15 @@ class GitHubClient:
         response = self._request("PATCH", f"/repos/{self.owner}/{self.repo}", json=payload)
         return _expect_response(response).json()
 
+    def get_vulnerability_alerts(self) -> bool:
+        response = self._request(
+            "GET", f"/repos/{self.owner}/{self.repo}/vulnerability-alerts", allow_404=True
+        )
+        return response is not None
+
+    def enable_vulnerability_alerts(self) -> None:
+        self._request("PUT", f"/repos/{self.owner}/{self.repo}/vulnerability-alerts")
+
     def list_rulesets(self) -> list[dict]:
         results: list[dict] = []
         path: str | None = f"/repos/{self.owner}/{self.repo}/rulesets"

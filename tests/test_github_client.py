@@ -257,3 +257,28 @@ def test_update_repo_settings(client):
     data = client.update_repo_settings({"delete_branch_on_merge": True})
     assert data["delete_branch_on_merge"] is True
     assert route.calls[0].request.content == b'{"delete_branch_on_merge":true}'
+
+
+@respx.mock
+def test_get_vulnerability_alerts_enabled(client):
+    respx.get("https://api.github.com/repos/acme/widgets/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    assert client.get_vulnerability_alerts() is True
+
+
+@respx.mock
+def test_get_vulnerability_alerts_disabled(client):
+    respx.get("https://api.github.com/repos/acme/widgets/vulnerability-alerts").mock(
+        return_value=httpx.Response(404)
+    )
+    assert client.get_vulnerability_alerts() is False
+
+
+@respx.mock
+def test_enable_vulnerability_alerts(client):
+    route = respx.put("https://api.github.com/repos/acme/widgets/vulnerability-alerts").mock(
+        return_value=httpx.Response(204)
+    )
+    client.enable_vulnerability_alerts()
+    assert route.called

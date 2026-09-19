@@ -44,3 +44,23 @@ def test_apply_repo_settings_is_idempotent_when_already_compliant():
     result = apply_repo_settings(client, config)
     assert result.applied is False
     client.update_repo_settings.assert_not_called()
+
+
+def test_plan_repo_settings_detects_vulnerability_alerts_drift():
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_vulnerability_alerts.return_value = False
+    config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(vulnerability_alerts=True))
+    result = plan_repo_settings(client, config)
+    assert len(result.changes) == 1
+    assert result.changes[0].field == "vulnerability_alerts"
+
+
+def test_apply_repo_settings_enables_vulnerability_alerts():
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_vulnerability_alerts.return_value = False
+    config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(vulnerability_alerts=True))
+    result = apply_repo_settings(client, config)
+    assert result.applied is True
+    client.enable_vulnerability_alerts.assert_called_once()
