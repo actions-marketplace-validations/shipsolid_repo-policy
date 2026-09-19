@@ -5,8 +5,8 @@ from repo_policy.models import PullRequestPolicy
 
 def to_branch_protection(policy: PullRequestPolicy) -> dict | None:
     """dismiss_stale_reviews/require_last_push_approval are modeled directly on PullRequestPolicy
-    (previously read through from current state — see docs/superpowers/plans/
-    2026-09-19-branch-protection-field-parity.md for why that changed)."""
+    (previously read through from current state — see commit 41e59cb, "model
+    dismiss_stale_reviews and require_last_push_approval", for why that changed)."""
     if not policy.required:
         return None
     return {

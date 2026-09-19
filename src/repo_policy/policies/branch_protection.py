@@ -41,9 +41,9 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
     """`resolved` must already have every modeled field filled in (see diff.resolve_desired).
     `restrictions` is now modeled via `clear_restrictions` — but only as "null or leave alone,"
     not as an arbitrary user/team/app allowlist, since repo-policy has no schema for declaring one
-    and the sibling tool this field closes the gap against (see
-    docs/superpowers/plans/2026-09-19-clear-restrictions-field.md) never sets one either, only ever
-    clears it."""
+    and the sibling tool this field closes the gap against (see commit 9abd10a, "model
+    clear_restrictions, closing the last repo_security field gap") never sets one either, only
+    ever clears it."""
     current_raw = current_raw or {}
     if resolved.pull_requests is None:
         raise ValueError(
