@@ -13,19 +13,21 @@ def test_to_branch_protection_builds_payload():
     assert payload["require_code_owner_reviews"] is True
 
 
-def test_to_branch_protection_defaults_unmodeled_fields_false_when_no_current_state():
-    policy = PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
-    payload = pull_requests.to_branch_protection(policy, current=None)
-    assert payload["dismiss_stale_reviews"] is False
-    assert payload["require_last_push_approval"] is False
-
-
-def test_to_branch_protection_preserves_unmodeled_fields_from_current_state():
-    policy = PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
-    current = {"dismiss_stale_reviews": True, "require_last_push_approval": True}
-    payload = pull_requests.to_branch_protection(policy, current=current)
+def test_to_branch_protection_includes_dismiss_stale_reviews_and_last_push_approval():
+    policy = PullRequestPolicy(
+        required=True, approvals=2, code_owner_review=True,
+        dismiss_stale_reviews=True, require_last_push_approval=True,
+    )
+    payload = pull_requests.to_branch_protection(policy)
     assert payload["dismiss_stale_reviews"] is True
     assert payload["require_last_push_approval"] is True
+
+
+def test_to_branch_protection_defaults_new_fields_false():
+    policy = PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
+    payload = pull_requests.to_branch_protection(policy)
+    assert payload["dismiss_stale_reviews"] is False
+    assert payload["require_last_push_approval"] is False
 
 
 def test_from_branch_protection_none_means_not_required():
@@ -38,6 +40,18 @@ def test_from_branch_protection_reads_payload():
     data = {"required_approving_review_count": 3, "require_code_owner_reviews": True}
     result = pull_requests.from_branch_protection(data)
     assert result == PullRequestPolicy(required=True, approvals=3, code_owner_review=True)
+
+
+def test_from_branch_protection_reads_dismiss_stale_reviews_and_last_push_approval():
+    data = {
+        "required_approving_review_count": 3,
+        "require_code_owner_reviews": True,
+        "dismiss_stale_reviews": True,
+        "require_last_push_approval": True,
+    }
+    result = pull_requests.from_branch_protection(data)
+    assert result.dismiss_stale_reviews is True
+    assert result.require_last_push_approval is True
 
 
 def test_to_ruleset_rule_none_when_not_required():
@@ -63,3 +77,16 @@ def test_from_ruleset_rule_reads_rule():
     }
     result = pull_requests.from_ruleset_rule(rule)
     assert result == PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
+
+
+def test_ruleset_rule_round_trips_dismiss_stale_reviews_and_last_push_approval():
+    policy = PullRequestPolicy(
+        required=True, approvals=1, code_owner_review=False,
+        dismiss_stale_reviews=True, require_last_push_approval=True,
+    )
+    rule = pull_requests.to_ruleset_rule(policy)
+    assert rule["parameters"]["dismiss_stale_reviews_on_push"] is True
+    assert rule["parameters"]["require_last_push_approval"] is True
+    result = pull_requests.from_ruleset_rule(rule)
+    assert result.dismiss_stale_reviews is True
+    assert result.require_last_push_approval is True

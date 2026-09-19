@@ -23,7 +23,10 @@ PERMISSIVE = BranchPolicy(
 )
 
 RESTRICTIVE_VALUES = {
-    "pull_requests": PullRequestPolicy(required=True, approvals=2, code_owner_review=True),
+    "pull_requests": PullRequestPolicy(
+        required=True, approvals=2, code_owner_review=True,
+        dismiss_stale_reviews=True, require_last_push_approval=True,
+    ),
     "status_checks": StatusChecksPolicy(required=["build"]),
     "signed_commits": True,
     "linear_history": True,

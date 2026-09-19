@@ -48,9 +48,7 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
     return {
         "enforce_admins": _unwrap(current_raw.get("enforce_admins"), False),
         "restrictions": current_raw.get("restrictions"),
-        "required_pull_request_reviews": pull_requests.to_branch_protection(
-            resolved.pull_requests, current_raw.get("required_pull_request_reviews")
-        ),
+        "required_pull_request_reviews": pull_requests.to_branch_protection(resolved.pull_requests),
         "required_status_checks": status_checks.to_branch_protection(
             resolved.status_checks, current_raw.get("required_status_checks")
         ),

@@ -9,6 +9,8 @@ class PullRequestPolicy(BaseModel):
     required: bool = True
     approvals: int = 1
     code_owner_review: bool = False
+    dismiss_stale_reviews: bool = False
+    require_last_push_approval: bool = False
 
 
 class StatusChecksPolicy(BaseModel):
