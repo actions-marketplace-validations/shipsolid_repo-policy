@@ -130,8 +130,9 @@ class GitHubClient:
         response = self._request("GET", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}")
         return _expect_response(response).json()
 
-    def find_ruleset_by_name(self, name: str) -> dict | None:
-        for summary in self.list_rulesets():
+    def find_ruleset_by_name(self, name: str, rulesets: list[dict] | None = None) -> dict | None:
+        candidates = rulesets if rulesets is not None else self.list_rulesets()
+        for summary in candidates:
             if summary["name"] == name:
                 return self.get_ruleset(summary["id"])
         return None

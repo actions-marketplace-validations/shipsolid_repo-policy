@@ -35,3 +35,18 @@ def test_audit_all_covers_every_declared_branch():
     config = PolicyConfig(version=1, branches={"main": BranchPolicy(), "release": BranchPolicy()})
     results = audit_all(client, config)
     assert {r.branch for r in results} == {"main", "release"}
+
+
+def test_audit_all_fetches_ruleset_list_at_most_once_for_multiple_ruleset_branches():
+    client = MagicMock()
+    client.list_rulesets.return_value = []
+    client.find_ruleset_by_name.return_value = None
+    config = PolicyConfig(
+        version=1,
+        branches={
+            "main": BranchPolicy(enforcement="ruleset"),
+            "release": BranchPolicy(enforcement="ruleset"),
+        },
+    )
+    audit_all(client, config)
+    assert client.list_rulesets.call_count == 1

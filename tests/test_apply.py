@@ -94,3 +94,36 @@ def test_prune_rulesets_deletes_only_orphaned_repo_policy_rulesets():
     deleted = prune_rulesets(client, config)
     assert deleted == ["repo-policy:old-branch"]
     client.delete_ruleset.assert_called_once_with(2)
+
+
+def test_prune_rulesets_reuses_a_prefetched_list_without_a_new_call():
+    client = MagicMock()
+    prefetched = [{"id": 2, "name": "repo-policy:old-branch"}]
+    config = _config()  # only "main" declared
+    deleted = prune_rulesets(client, config, rulesets_cache=prefetched)
+    assert deleted == ["repo-policy:old-branch"]
+    client.list_rulesets.assert_not_called()
+
+
+def test_apply_all_fetches_ruleset_list_at_most_once_for_multiple_ruleset_branches():
+    client = MagicMock()
+    client.list_rulesets.return_value = []
+    client.find_ruleset_by_name.return_value = None
+    config = PolicyConfig(
+        version=1,
+        branches={
+            "main": BranchPolicy(enforcement="ruleset", linear_history=True),
+            "release": BranchPolicy(enforcement="ruleset", linear_history=True),
+        },
+    )
+    apply_all(client, config)
+    assert client.list_rulesets.call_count == 1
+
+
+def test_apply_all_skips_ruleset_prefetch_when_no_branch_uses_it():
+    client = MagicMock()
+    client.get_branch_protection.return_value = None
+    client.get_required_signatures.return_value = False
+    config = _config()  # branch_protection (the default), not ruleset
+    apply_all(client, config)
+    client.list_rulesets.assert_not_called()

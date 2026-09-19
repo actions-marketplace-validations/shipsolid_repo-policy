@@ -201,6 +201,18 @@ def test_find_ruleset_by_name_returns_none_when_absent(client):
 
 
 @respx.mock
+def test_find_ruleset_by_name_reuses_prefetched_list_without_a_new_get(client):
+    list_route = respx.get("https://api.github.com/repos/acme/widgets/rulesets")
+    respx.get("https://api.github.com/repos/acme/widgets/rulesets/1").mock(
+        return_value=httpx.Response(200, json={"id": 1, "name": "repo-policy:main", "rules": []})
+    )
+    prefetched = [{"id": 1, "name": "repo-policy:main"}, {"id": 2, "name": "other"}]
+    result = client.find_ruleset_by_name("repo-policy:main", rulesets=prefetched)
+    assert result == {"id": 1, "name": "repo-policy:main", "rules": []}
+    assert not list_route.called
+
+
+@respx.mock
 def test_create_ruleset_posts_payload(client):
     route = respx.post("https://api.github.com/repos/acme/widgets/rulesets").mock(
         return_value=httpx.Response(201, json={"id": 5, "name": "repo-policy:main"})

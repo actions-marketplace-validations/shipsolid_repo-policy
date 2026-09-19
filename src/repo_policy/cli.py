@@ -6,7 +6,7 @@ import sys
 
 import click
 
-from repo_policy.apply import apply_all, prune_rulesets
+from repo_policy.apply import apply_all, prefetch_rulesets, prune_rulesets
 from repo_policy.audit import audit_all
 from repo_policy.config import ConfigError, load_policy
 from repo_policy.github_client import GitHubAPIError, GitHubClient
@@ -133,9 +133,10 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
 
     try:
         with GitHubClient(token=_resolve_token(token), owner=owner, repo=name) as client:
-            results = apply_all(client, config)
+            rulesets_cache = prefetch_rulesets(client, config, force=config.strict)
+            results = apply_all(client, config, rulesets_cache=rulesets_cache)
             if config.strict:
-                for deleted_name in prune_rulesets(client, config):
+                for deleted_name in prune_rulesets(client, config, rulesets_cache=rulesets_cache):
                     click.echo(f"- removed orphaned ruleset {deleted_name}")
     except GitHubAPIError as exc:
         click.echo(str(exc), err=True)

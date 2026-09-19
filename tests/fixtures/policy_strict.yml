@@ -1,0 +1,6 @@
+version: 1
+strict: true
+
+branches:
+  main:
+    linear_history: true
