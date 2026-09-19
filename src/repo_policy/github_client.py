@@ -131,6 +131,15 @@ class GitHubClient:
     def enable_vulnerability_alerts(self) -> None:
         self._request("PUT", f"/repos/{self.owner}/{self.repo}/vulnerability-alerts")
 
+    def get_automated_security_fixes(self) -> bool:
+        response = self._request(
+            "GET", f"/repos/{self.owner}/{self.repo}/automated-security-fixes", allow_404=True
+        )
+        return response is not None and bool(response.json().get("enabled", False))
+
+    def enable_automated_security_fixes(self) -> None:
+        self._request("PUT", f"/repos/{self.owner}/{self.repo}/automated-security-fixes")
+
     def list_rulesets(self) -> list[dict]:
         results: list[dict] = []
         path: str | None = f"/repos/{self.owner}/{self.repo}/rulesets"

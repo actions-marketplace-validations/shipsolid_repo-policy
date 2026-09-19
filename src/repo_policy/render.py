@@ -22,6 +22,7 @@ _REPO_SETTINGS_LABELS = {
     "delete_branch_on_merge": "Delete branch on merge",
     "allow_update_branch": "Allow update branch",
     "vulnerability_alerts": "Dependabot alerts",
+    "automated_security_fixes": "Dependabot security updates",
 }
 
 

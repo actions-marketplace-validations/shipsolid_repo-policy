@@ -64,3 +64,21 @@ def test_apply_repo_settings_enables_vulnerability_alerts():
     result = apply_repo_settings(client, config)
     assert result.applied is True
     client.enable_vulnerability_alerts.assert_called_once()
+
+
+def test_apply_repo_settings_enables_alerts_before_security_fixes():
+    """Both fields are drifted in the same apply -- vulnerability_alerts must be enabled first,
+    since GitHub rejects enabling automated_security_fixes before it."""
+    call_order = []
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_vulnerability_alerts.return_value = False
+    client.get_automated_security_fixes.return_value = False
+    client.enable_vulnerability_alerts.side_effect = lambda: call_order.append("vulnerability_alerts")
+    client.enable_automated_security_fixes.side_effect = lambda: call_order.append("automated_security_fixes")
+    config = PolicyConfig(
+        version=1, branches={},
+        repo_settings=RepoSettingsPolicy(vulnerability_alerts=True, automated_security_fixes=True),
+    )
+    apply_repo_settings(client, config)
+    assert call_order == ["vulnerability_alerts", "automated_security_fixes"]

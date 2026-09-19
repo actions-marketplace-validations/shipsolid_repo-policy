@@ -116,3 +116,18 @@ def test_policy_config_parses_repo_settings():
     )
     assert config.repo_settings.delete_branch_on_merge is True
     assert config.repo_settings.allow_update_branch is False
+
+
+def test_repo_settings_rejects_automated_security_fixes_without_vulnerability_alerts():
+    with pytest.raises(ValidationError, match="vulnerability_alerts"):
+        RepoSettingsPolicy(automated_security_fixes=True)
+
+
+def test_repo_settings_rejects_automated_security_fixes_with_vulnerability_alerts_false():
+    with pytest.raises(ValidationError, match="vulnerability_alerts"):
+        RepoSettingsPolicy(automated_security_fixes=True, vulnerability_alerts=False)
+
+
+def test_repo_settings_allows_automated_security_fixes_with_vulnerability_alerts_true():
+    policy = RepoSettingsPolicy(automated_security_fixes=True, vulnerability_alerts=True)
+    assert policy.automated_security_fixes is True

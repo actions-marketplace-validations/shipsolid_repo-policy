@@ -34,6 +34,10 @@ def plan_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSettin
         current = client.get_vulnerability_alerts()
         result.changes.extend(diff_toggle("vulnerability_alerts", current, desired.vulnerability_alerts))
 
+    if desired.automated_security_fixes is not None:
+        current = client.get_automated_security_fixes()
+        result.changes.extend(diff_toggle("automated_security_fixes", current, desired.automated_security_fixes))
+
     return result
 
 
@@ -51,6 +55,14 @@ def apply_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSetti
     changed_fields = {c.field for c in result.changes}
     if "vulnerability_alerts" in changed_fields:
         client.enable_vulnerability_alerts()
+
+    # Must run after vulnerability_alerts, above -- GitHub requires Dependabot alerts enabled
+    # before Dependabot security updates can be turned on. RepoSettingsPolicy's model validator
+    # (models.py) already guarantees automated_security_fixes=True never appears without
+    # vulnerability_alerts=True declared, but that only constrains what's *declared* -- this
+    # ordering is what makes the two live API calls land in the right sequence.
+    if "automated_security_fixes" in changed_fields:
+        client.enable_automated_security_fixes()
 
     result.applied = bool(result.changes)
     return result

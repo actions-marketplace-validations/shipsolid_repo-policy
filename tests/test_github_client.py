@@ -282,3 +282,28 @@ def test_enable_vulnerability_alerts(client):
     )
     client.enable_vulnerability_alerts()
     assert route.called
+
+
+@respx.mock
+def test_get_automated_security_fixes_enabled(client):
+    respx.get("https://api.github.com/repos/acme/widgets/automated-security-fixes").mock(
+        return_value=httpx.Response(200, json={"enabled": True})
+    )
+    assert client.get_automated_security_fixes() is True
+
+
+@respx.mock
+def test_get_automated_security_fixes_disabled_via_404(client):
+    respx.get("https://api.github.com/repos/acme/widgets/automated-security-fixes").mock(
+        return_value=httpx.Response(404)
+    )
+    assert client.get_automated_security_fixes() is False
+
+
+@respx.mock
+def test_enable_automated_security_fixes(client):
+    route = respx.put("https://api.github.com/repos/acme/widgets/automated-security-fixes").mock(
+        return_value=httpx.Response(204)
+    )
+    client.enable_automated_security_fixes()
+    assert route.called
