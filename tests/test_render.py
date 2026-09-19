@@ -26,3 +26,9 @@ def test_render_plan_singular_change_count():
     changes = [Change(field="linear_history", current_value=False, desired_value=True, action="add")]
     output = render_plan("acme/widgets", "main", changes)
     assert "1 change required." in output
+
+
+def test_render_plan_shows_enforce_admins_label():
+    changes = [Change(field="enforce_admins", current_value=False, desired_value=True, action="add")]
+    output = render_plan("acme/widgets", "main", changes)
+    assert "+ Admin enforcement" in output

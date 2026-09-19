@@ -11,6 +11,7 @@ _LABELS = {
     "linear_history": "Linear history",
     "allow_force_push": "Force pushes",
     "allow_deletion": "Branch deletion",
+    "enforce_admins": "Admin enforcement",
 }
 
 

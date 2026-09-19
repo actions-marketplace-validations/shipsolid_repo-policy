@@ -23,6 +23,7 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
             linear_history=False,
             allow_force_push=True,
             allow_deletion=True,
+            enforce_admins=False,
         )
     return BranchPolicy(
         enforcement="branch_protection",
@@ -32,13 +33,14 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
         linear_history=_unwrap(data.get("required_linear_history"), False),
         allow_force_push=_unwrap(data.get("allow_force_pushes"), True),
         allow_deletion=_unwrap(data.get("allow_deletions"), True),
+        enforce_admins=_unwrap(data.get("enforce_admins"), False),
     )
 
 
 def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
     """`resolved` must already have every modeled field filled in (see diff.resolve_desired) —
-    this only reads `current_raw` for the two fields the v1 schema doesn't model but the PUT
-    endpoint requires (`enforce_admins`, `restrictions`), preserving whatever is already there."""
+    this only reads `current_raw` for `restrictions`, the one PUT-required field the v1 schema
+    still doesn't model, preserving whatever is already there."""
     current_raw = current_raw or {}
     if resolved.pull_requests is None:
         raise ValueError(
@@ -46,7 +48,7 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
             "diff.resolve_desired(), which always fills every modeled field"
         )
     return {
-        "enforce_admins": _unwrap(current_raw.get("enforce_admins"), False),
+        "enforce_admins": bool(resolved.enforce_admins),
         "restrictions": current_raw.get("restrictions"),
         "required_pull_request_reviews": pull_requests.to_branch_protection(resolved.pull_requests),
         "required_status_checks": status_checks.to_branch_protection(

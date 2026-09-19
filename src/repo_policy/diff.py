@@ -14,6 +14,7 @@ _FIELDS = (
     "linear_history",
     "allow_force_push",
     "allow_deletion",
+    "enforce_admins",
 )
 
 _SCHEMA_DEFAULTS: dict[str, Any] = {
@@ -26,6 +27,7 @@ _SCHEMA_DEFAULTS: dict[str, Any] = {
     "linear_history": False,
     "allow_force_push": True,
     "allow_deletion": True,
+    "enforce_admins": False,
 }
 
 # allow_force_push/allow_deletion have inverted polarity vs. every other field: False means a

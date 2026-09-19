@@ -8,6 +8,7 @@ PERMISSIVE = BranchPolicy(
     linear_history=False,
     allow_force_push=True,
     allow_deletion=True,
+    enforce_admins=False,
 )
 
 

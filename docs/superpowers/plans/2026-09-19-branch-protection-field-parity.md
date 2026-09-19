@@ -25,9 +25,14 @@ and whether GitHub Rulesets can represent it at all:
    which doesn't always exist (e.g. when `pull_requests.required` is false) — so it can't be
    represented independently. Rather than build that partial, sometimes-silently-unenforceable
    mapping, all four fields are **branch_protection-only**: a new Pydantic model validator on
-   `BranchPolicy` rejects policy.yml files that set any of them on a branch with
-   `enforcement: ruleset`, at `validate`/parse time — fail loud, never silently drop a declared
-   rule. `rulesets.from_api()` hardcodes all four to their permissive constant so
+   `BranchPolicy` rejects policy.yml files that set any of them to a *non-permissive* value on a
+   branch with `enforcement: ruleset`, at `validate`/parse time — fail loud, never silently drop a
+   declared rule. The validator specifically allows the permissive (no-op) value through, not just
+   `None`: `BranchPolicy` is also used internally to represent live GitHub state (see
+   `ARCHITECTURE.md`'s Domain Model section), and `rulesets.from_api()` must be able to construct
+   `BranchPolicy(enforcement="ruleset", enforce_admins=False, ...)` — a concrete, non-`None` value —
+   for its "current state" objects without tripping the same validator a human's policy.yml goes
+   through. `rulesets.from_api()` hardcodes all four to their permissive constant so
    `resolve_desired()`/`diff()` never report phantom drift for a ruleset-enforced branch, in either
    managed-scope or strict mode.
 
@@ -396,7 +401,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ... (PullRequestPolicy, StatusChecksPolicy unchanged)
 
-_RULESET_UNSUPPORTED_FIELDS: tuple[str, ...] = ("enforce_admins",)
+# field name -> its permissive (no-op) value under enforcement: ruleset. rulesets.from_api()
+# constructs internal "current state" BranchPolicy objects with these exact values for each field
+# below (never None) — the validator below must let that through unrejected, so it only rejects a
+# *non-permissive* (actually-restrictive) value, not merely a non-None one. A human writing
+# `enforce_admins: false` under `enforcement: ruleset` is a harmless no-op declaration and is
+# allowed; `enforce_admins: true` is a real restriction with no ruleset equivalent and is rejected.
+_RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {"enforce_admins": False}
 
 
 class BranchPolicy(BaseModel):
@@ -414,7 +425,10 @@ class BranchPolicy(BaseModel):
     def _reject_ruleset_unsupported_fields(self) -> "BranchPolicy":
         if self.enforcement != "ruleset":
             return self
-        set_fields = [name for name in _RULESET_UNSUPPORTED_FIELDS if getattr(self, name) is not None]
+        set_fields = [
+            name for name, permissive in _RULESET_UNSUPPORTED_FIELDS.items()
+            if getattr(self, name) not in (None, permissive)
+        ]
         if set_fields:
             raise ValueError(
                 f"{', '.join(set_fields)} not supported under enforcement: ruleset "
@@ -424,10 +438,41 @@ class BranchPolicy(BaseModel):
         return self
 ```
 
+**Note (found during execution, not anticipated when this plan was written):** an earlier draft of
+this validator rejected any non-`None` value unconditionally. That breaks `rulesets.from_api()`,
+which must construct `BranchPolicy(enforcement="ruleset", enforce_admins=False, ...)` — a concrete
+value, not `None` — for its internal "current state" representation. The dict-based, permissive-
+value-aware check above is the corrected version; use it, not a plain tuple membership check.
+
 - [ ] **Step 4: Run to verify pass**
 
 Run: `pytest tests/test_models.py -v -k enforce_admins`
 Expected: `PASS`
+
+- [ ] **Step 4b: Fix the same phantom-drift gap `docs/test-strategy.md` warns about, in `tests/test_diff.py`**
+
+`tests/test_diff.py`'s hand-built `PERMISSIVE` `BranchPolicy` fixture doesn't set `enforce_admins`
+explicitly, so it defaults to `None` — but every real `from_api()` call now returns a concrete
+`False`, never `None`, for this field. Left unfixed, `test_strict_mode_reports_no_drift_for_an_already_compliant_permissive_branch`
+fails: strict mode resolves the unset field to the schema default (`False`), diffs it against the
+fixture's `None`, and reports a permanent phantom `add` change — exactly the bug class that test
+exists to catch. Add `enforce_admins=False` to that fixture:
+
+```python
+PERMISSIVE = BranchPolicy(
+    pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+    status_checks=None,
+    signed_commits=False,
+    linear_history=False,
+    allow_force_push=True,
+    allow_deletion=True,
+    enforce_admins=False,
+)
+```
+
+Run: `pytest tests/test_diff.py -v`
+Expected: `PASS`. (Tasks 3-5 each add one more field to this same fixture — the same phantom-drift
+failure will otherwise recur at every task boundary.)
 
 - [ ] **Step 5: Add `enforce_admins` to `diff.py`**
 
@@ -599,8 +644,9 @@ broken test is fixed by this task's Step 9).
 ```bash
 git add src/repo_policy/models.py src/repo_policy/diff.py \
   src/repo_policy/policies/branch_protection.py src/repo_policy/policies/rulesets.py \
-  src/repo_policy/render.py tests/test_models.py tests/test_policies_branch_protection.py \
-  tests/test_policies_rulesets.py tests/test_policies_parity.py tests/test_render.py
+  src/repo_policy/render.py tests/test_models.py tests/test_diff.py \
+  tests/test_policies_branch_protection.py tests/test_policies_rulesets.py \
+  tests/test_policies_parity.py tests/test_render.py
 git commit -m "feat: model enforce_admins, branch_protection-only
 
 Highest-impact of the branch-protection fields the v1 schema doesn't
@@ -644,7 +690,9 @@ Expected: `FAIL`
 - [ ] **Step 3: Add the field to `BranchPolicy` and extend the validator tuple in `src/repo_policy/models.py`**
 
 ```python
-_RULESET_UNSUPPORTED_FIELDS: tuple[str, ...] = ("enforce_admins", "required_conversation_resolution")
+_RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
+    "enforce_admins": False, "required_conversation_resolution": False,
+}
 ```
 
 Add `required_conversation_resolution: bool | None = None` to `BranchPolicy`, directly after
@@ -653,6 +701,14 @@ Add `required_conversation_resolution: bool | None = None` to `BranchPolicy`, di
 - [ ] **Step 4: Run to verify pass**
 
 Run: `pytest tests/test_models.py -v -k required_conversation_resolution`
+Expected: `PASS`
+
+- [ ] **Step 4b: Extend `tests/test_diff.py`'s `PERMISSIVE` fixture**
+
+Same phantom-drift gap as Task 2 Step 4b, one field further. Add `required_conversation_resolution=False`
+to `PERMISSIVE`'s `BranchPolicy(...)` call in `tests/test_diff.py`.
+
+Run: `pytest tests/test_diff.py -v`
 Expected: `PASS`
 
 - [ ] **Step 5: Add to `diff.py`**
@@ -775,9 +831,9 @@ Expected: `FAIL`
 - [ ] **Step 3: Add field + extend validator tuple in `src/repo_policy/models.py`**
 
 ```python
-_RULESET_UNSUPPORTED_FIELDS: tuple[str, ...] = (
-    "enforce_admins", "required_conversation_resolution", "lock_branch",
-)
+_RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
+    "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
+}
 ```
 
 Add `lock_branch: bool | None = None` to `BranchPolicy`.
@@ -785,6 +841,13 @@ Add `lock_branch: bool | None = None` to `BranchPolicy`.
 - [ ] **Step 4: Run to verify pass**
 
 Run: `pytest tests/test_models.py -v -k lock_branch`
+Expected: `PASS`
+
+- [ ] **Step 4b: Extend `tests/test_diff.py`'s `PERMISSIVE` fixture**
+
+Add `lock_branch=False` to `PERMISSIVE`'s `BranchPolicy(...)` call in `tests/test_diff.py`.
+
+Run: `pytest tests/test_diff.py -v`
 Expected: `PASS`
 
 - [ ] **Step 5: Add to `diff.py`**
@@ -897,9 +960,10 @@ Expected: `FAIL`
 - [ ] **Step 3: Add field + finalize the validator tuple in `src/repo_policy/models.py`**
 
 ```python
-_RULESET_UNSUPPORTED_FIELDS: tuple[str, ...] = (
-    "enforce_admins", "required_conversation_resolution", "lock_branch", "allow_fork_syncing",
-)
+_RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
+    "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
+    "allow_fork_syncing": True,  # inverted polarity: True is the permissive value here
+}
 ```
 
 Add `allow_fork_syncing: bool | None = None` to `BranchPolicy`.
@@ -907,6 +971,15 @@ Add `allow_fork_syncing: bool | None = None` to `BranchPolicy`.
 - [ ] **Step 4: Run to verify pass**
 
 Run: `pytest tests/test_models.py -v -k allow_fork_syncing`
+Expected: `PASS`
+
+- [ ] **Step 4b: Extend `tests/test_diff.py`'s `PERMISSIVE` fixture**
+
+Add `allow_fork_syncing=True` to `PERMISSIVE`'s `BranchPolicy(...)` call in `tests/test_diff.py`
+(the permissive value here is `True`, not `False` — inverted polarity, same as `allow_force_push`/
+`allow_deletion`).
+
+Run: `pytest tests/test_diff.py -v`
 Expected: `PASS`
 
 - [ ] **Step 5: Add to `diff.py`, including the inverted-polarity registration**
@@ -932,10 +1005,8 @@ def test_allow_fork_syncing_inverted_polarity_add_vs_remove():
     assert changes[0].action == "remove"  # restriction is being lifted
 ```
 
-Update the module-level `PERMISSIVE` fixture in `tests/test_diff.py` to include
-`allow_fork_syncing=True` (and `enforce_admins=False, required_conversation_resolution=False,
-lock_branch=False` from Tasks 2-4, if not already added there — `test_diff.py`'s `PERMISSIVE` is a
-separate fixture from `test_policies_parity.py`'s and needs the same four additions independently).
+(`PERMISSIVE`'s `allow_fork_syncing=True` was already added in Step 4b — this step only adds the
+new targeted test above.)
 
 - [ ] **Step 7: Run to verify pass**
 

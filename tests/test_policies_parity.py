@@ -32,12 +32,22 @@ RESTRICTIVE_VALUES = {
     "linear_history": True,
     "allow_force_push": False,
     "allow_deletion": False,
+    "enforce_admins": True,
 }
 
 # signed_commits is deliberately excluded here: for the branch_protection backend it's handled
 # by a separate GitHub endpoint (GitHubClient.set_required_signatures), never by to_api_payload —
 # that path is covered by test_apply_branch_sets_signed_commits_separately instead.
 BRANCH_PROTECTION_FIELDS = [f for f in _FIELDS if f != "signed_commits"]
+
+# enforce_admins/required_conversation_resolution/lock_branch/allow_fork_syncing have no GitHub
+# Rulesets equivalent -- BranchPolicy's model validator (models.py) rejects setting them under
+# enforcement: ruleset, so the ruleset backend never needs to represent them (see rulesets.from_api,
+# which hardcodes each to its permissive constant instead of reading it).
+RULESET_UNSUPPORTED_FIELDS = {
+    "enforce_admins", "required_conversation_resolution", "lock_branch", "allow_fork_syncing",
+}
+RULESET_FIELDS = [f for f in _FIELDS if f not in RULESET_UNSUPPORTED_FIELDS]
 
 
 @pytest.mark.parametrize("field", BRANCH_PROTECTION_FIELDS)
@@ -48,7 +58,7 @@ def test_field_is_represented_by_branch_protection_backend(field):
     assert payload != baseline, f"branch_protection backend ignores field {field!r}"
 
 
-@pytest.mark.parametrize("field", _FIELDS)
+@pytest.mark.parametrize("field", RULESET_FIELDS)
 def test_field_is_represented_by_ruleset_backend(field):
     resolved = PERMISSIVE.model_copy(update={field: RESTRICTIVE_VALUES[field]})
     baseline_rules = rulesets.to_api_payload("main", PERMISSIVE)["rules"]

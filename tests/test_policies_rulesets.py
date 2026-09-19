@@ -8,6 +8,11 @@ def test_ruleset_name_is_deterministic():
     assert rulesets.ruleset_name("main") == "repo-policy:main"
 
 
+def test_from_api_hardcodes_enforce_admins_false():
+    assert rulesets.from_api(None).enforce_admins is False
+    assert rulesets.from_api({"rules": []}).enforce_admins is False
+
+
 def test_from_api_none_means_fully_permissive():
     result = rulesets.from_api(None)
     assert result.pull_requests == PullRequestPolicy(required=False, approvals=0, code_owner_review=False)

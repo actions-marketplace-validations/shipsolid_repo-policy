@@ -22,6 +22,21 @@ def test_branch_policy_rejects_unknown_enforcement():
         BranchPolicy(enforcement="bogus")
 
 
+def test_branch_policy_rejects_enforce_admins_under_ruleset():
+    with pytest.raises(ValidationError, match="enforce_admins"):
+        BranchPolicy(enforcement="ruleset", enforce_admins=True)
+
+
+def test_branch_policy_allows_enforce_admins_under_branch_protection():
+    policy = BranchPolicy(enforcement="branch_protection", enforce_admins=True)
+    assert policy.enforce_admins is True
+
+
+def test_branch_policy_allows_ruleset_enforcement_when_enforce_admins_unset():
+    policy = BranchPolicy(enforcement="ruleset")
+    assert policy.enforce_admins is None
+
+
 def test_policy_config_parses_nested_branches():
     config = PolicyConfig(
         version=1,
