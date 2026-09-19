@@ -99,7 +99,7 @@ class GitHubClient:
             is_retryable = is_rate_limited or (is_server_error and method != "POST")
 
             if is_retryable and attempt < self._max_retries:
-                time.sleep(self._backoff_seconds * (2**attempt))
+                time.sleep(self._retry_delay(response, attempt))
                 attempt += 1
                 continue
 
@@ -107,6 +107,22 @@ class GitHubClient:
                 f"GitHub API error {response.status_code} on {method} {path}: {response.text}",
                 status_code=response.status_code,
             )
+
+    def _retry_delay(self, response: httpx.Response, attempt: int) -> float:
+        """Honors GitHub's Retry-After header (present on secondary-rate-limit responses,
+        typically a short wait) instead of blindly exponential-backing-off past a window GitHub
+        explicitly told us the length of. Deliberately does NOT honor X-RateLimit-Reset (the
+        primary rate limit) -- that reset can be up to an hour away, and silently blocking a CLI
+        invocation for that long is a product decision, not a pure reliability fix; failing after
+        the existing retry budget with a clear GitHubAPIError remains the right default for a
+        primary-limit exhaustion."""
+        retry_after = response.headers.get("Retry-After")
+        if retry_after is not None:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+        return self._backoff_seconds * (2**attempt)
 
     def get_branch_protection(self, branch: str) -> dict | None:
         response = self._request(

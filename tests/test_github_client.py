@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import httpx
 import pytest
 import respx
@@ -84,6 +86,34 @@ def test_request_raises_immediately_on_non_retryable_4xx(client):
         client._request("GET", "/repos/acme/widgets/forbidden")
     assert exc_info.value.status_code == 401
     assert route.call_count == 1
+
+
+@respx.mock
+def test_request_honors_retry_after_header_over_exponential_backoff(client):
+    route = respx.get("https://api.github.com/repos/acme/widgets/rate-limited")
+    route.side_effect = [
+        httpx.Response(
+            429, json={"message": "secondary rate limit"}, headers={"Retry-After": "13"}
+        ),
+        httpx.Response(200, json={"ok": True}),
+    ]
+    with patch("repo_policy.github_client.time.sleep") as mock_sleep:
+        response = client._request("GET", "/repos/acme/widgets/rate-limited")
+    assert response.json() == {"ok": True}
+    mock_sleep.assert_called_once_with(13.0)
+
+
+@respx.mock
+def test_request_falls_back_to_exponential_backoff_without_retry_after_header(client):
+    route = respx.get("https://api.github.com/repos/acme/widgets/rate-limited")
+    route.side_effect = [
+        httpx.Response(429, json={"message": "secondary rate limit"}),
+        httpx.Response(200, json={"ok": True}),
+    ]
+    with patch("repo_policy.github_client.time.sleep") as mock_sleep:
+        response = client._request("GET", "/repos/acme/widgets/rate-limited")
+    assert response.json() == {"ok": True}
+    mock_sleep.assert_called_once_with(0.0)  # client fixture uses backoff_seconds=0.0
 
 
 @respx.mock
