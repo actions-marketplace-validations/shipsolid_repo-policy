@@ -1,0 +1,16 @@
+version: 1
+
+branches:
+  main:
+    pull_requests:
+      required: true
+      approvals: 2
+      code_owner_review: true
+    status_checks:
+      required:
+        - build
+        - test
+    signed_commits: true
+    linear_history: true
+    allow_force_push: false
+    allow_deletion: false
