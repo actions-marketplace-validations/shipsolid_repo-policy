@@ -44,10 +44,19 @@ repo-policy apply --repo acme/widgets
 
 ```yaml
 - uses: shipsolid/repo-policy@v0
+  env:
+    GITHUB_TOKEN: ${{ secrets.REPO_POLICY_TOKEN }}
   with:
     config: .github/repository-policy.yml
     mode: audit
 ```
+
+**`secrets.GITHUB_TOKEN` will not work here, in any workflow, no matter what `permissions:` you
+grant it** — confirmed against a real repo. GitHub Actions' automatically-generated token has no
+permission scope covering branch protection or ruleset administration; that's a platform
+constraint, not something a workflow can opt into. Create a PAT with `repo` scope (classic) or
+`Administration: Read and write` (fine-grained), store it as a repository secret — `REPO_POLICY_TOKEN`
+above is just an example name — and reference that secret instead.
 
 The floating tag tracks the current major version (`v0` until a `1.0.0` release ships), the same
 convention `actions/checkout` and similar Actions use.
