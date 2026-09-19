@@ -53,10 +53,18 @@ can't drift between "branch protection" and "ruleset" mode.
 - **`PolicyConfig`** — the whole `policy.yml`: a schema `version`, a top-level `strict` default,
   and a `branches: dict[str, BranchPolicy]` map.
 - **`BranchPolicy`** — one branch's desired state: `enforcement` (`branch_protection` | `ruleset`,
-  default `branch_protection`), an optional per-branch `strict` override, and six *optional*
+  default `branch_protection`), an optional per-branch `strict` override, and ten *optional*
   policy fields (`pull_requests`, `status_checks`, `signed_commits`, `linear_history`,
-  `allow_force_push`, `allow_deletion`). `None` on any of these six means "not declared" — this is
-  the single most important modeling choice in the codebase (see `docs/adrs/0003-*`).
+  `allow_force_push`, `allow_deletion`, `enforce_admins`, `required_conversation_resolution`,
+  `lock_branch`, `allow_fork_syncing`). `None` on any of these ten means "not declared" — this is
+  the single most important modeling choice in the codebase (see `docs/adrs/0003-*`). The last
+  four have no GitHub Rulesets equivalent (`required_conversation_resolution`'s nearest cousin,
+  `required_review_thread_resolution`, only exists as a `pull_request` rule parameter, which
+  doesn't always exist) — a model validator on `BranchPolicy` rejects declaring a non-permissive
+  value for any of them on a branch with `enforcement: ruleset` at `validate` time, while still
+  allowing the permissive (no-op) value through so the same type can represent live ruleset state
+  internally. `PullRequestPolicy` additionally carries `dismiss_stale_reviews`/
+  `require_last_push_approval`, which *are* fully cross-backend.
 - **`PullRequestPolicy`** / **`StatusChecksPolicy`** — the two fields whose desired state is more
   than a boolean.
 - **Current state** is the *same* `BranchPolicy` type, populated by `branch_protection.from_api()`
@@ -115,11 +123,12 @@ does not persist state outside the process it runs in.
 
 - **Managed-scope (default):** `apply` never touches a branch absent from `policy.yml`. Within a
   declared branch, only the fields present in `policy.yml` are enforced; everything else — for
-  `branch_protection`, this includes GitHub settings the v1 schema doesn't model at all
-  (`enforce_admins`, `restrictions`, and the nested `dismiss_stale_reviews` /
-  `require_last_push_approval` / status-check `strict` fields) — is read from current state and
-  passed straight through, never reset. For `ruleset`, the tool only ever creates/reads/updates a
-  ruleset named `repo-policy:<branch>`; it never inspects or modifies any other ruleset.
+  `branch_protection`, this now only includes `restrictions` and the status-check `strict` field,
+  the two GitHub settings the v1 schema still doesn't model at all (`enforce_admins` and the nested
+  `dismiss_stale_reviews`/`require_last_push_approval` became modeled, enforced fields — see the
+  Domain Model section above) — is read from current state and passed straight through, never
+  reset. For `ruleset`, the tool only ever creates/reads/updates a ruleset named
+  `repo-policy:<branch>`; it never inspects or modifies any other ruleset.
 - **Strict (`strict: true`, top-level default or per-branch override — branch wins):** within a
   *declared* branch, fields left unset are now actively reset to the permissive schema default
   instead of left alone. For `ruleset` only, strict additionally deletes any `repo-policy:*`-named
