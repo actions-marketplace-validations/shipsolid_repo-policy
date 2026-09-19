@@ -56,12 +56,43 @@ def test_request_raises_after_exhausting_retries(client):
 
 
 @respx.mock
-def test_request_does_not_retry_post_on_500(client):
+def test_request_does_not_retry_non_idempotent_post_on_500(client):
     route = respx.post("https://api.github.com/repos/acme/widgets/rulesets").mock(
         return_value=httpx.Response(500, json={"message": "boom"})
     )
     with pytest.raises(GitHubAPIError):
-        client._request("POST", "/repos/acme/widgets/rulesets", json={"name": "repo-policy:main"})
+        client._request(
+            "POST", "/repos/acme/widgets/rulesets", json={"name": "repo-policy:main"}, idempotent=False
+        )
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_request_retries_idempotent_post_on_500(client):
+    """set_required_signatures's enable path is a POST but IS idempotent (posting it twice has
+    the same end state) -- only genuinely non-idempotent calls like create_ruleset should opt out
+    via idempotent=False. Every other call, including POST, retries on 500 by default."""
+    route = respx.post(
+        "https://api.github.com/repos/acme/widgets/branches/main/protection/required_signatures"
+    )
+    route.side_effect = [
+        httpx.Response(500, json={"message": "boom"}),
+        httpx.Response(200, json={"enabled": True}),
+    ]
+    response = client._request(
+        "POST", "/repos/acme/widgets/branches/main/protection/required_signatures"
+    )
+    assert response.json() == {"enabled": True}
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_create_ruleset_does_not_retry_on_500(client):
+    route = respx.post("https://api.github.com/repos/acme/widgets/rulesets").mock(
+        return_value=httpx.Response(500, json={"message": "boom"})
+    )
+    with pytest.raises(GitHubAPIError):
+        client.create_ruleset({"name": "repo-policy:main"})
     assert route.call_count == 1
 
 

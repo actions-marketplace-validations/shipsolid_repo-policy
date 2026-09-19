@@ -76,7 +76,12 @@ class GitHubClient:
         params: dict | None = None,
         allow_404: bool = False,
         allow_422: bool = False,
+        idempotent: bool = True,
     ) -> httpx.Response | None:
+        """`idempotent=False` is for the one call that genuinely isn't (create_ruleset's POST,
+        which creates a new resource each time) -- NOT a blanket "POST is dangerous" rule.
+        set_required_signatures's enable path is also a POST, but repeating it is a no-op, so it
+        (and every other call) keeps the default and retries on 5xx like any other method."""
         attempt = 0
         while True:
             response = self._client.request(method, path, json=json, params=params)
@@ -91,12 +96,10 @@ class GitHubClient:
             is_rate_limited = response.status_code == 429 or (
                 response.status_code == 403 and "rate limit" in response.text.lower()
             )
-            # POST is not idempotent (e.g. create_ruleset) -- a 5xx after GitHub already
-            # processed the request but lost the response would duplicate the resource on retry.
-            # 429/secondary-rate-limit responses are always safe to retry regardless of method:
-            # GitHub rejects them before doing any work.
+            # 429/secondary-rate-limit responses are always safe to retry regardless of
+            # idempotency: GitHub rejects them before doing any work.
             is_server_error = response.status_code >= 500
-            is_retryable = is_rate_limited or (is_server_error and method != "POST")
+            is_retryable = is_rate_limited or (is_server_error and idempotent)
 
             if is_retryable and attempt < self._max_retries:
                 time.sleep(self._retry_delay(response, attempt))
@@ -238,7 +241,9 @@ class GitHubClient:
         return None
 
     def create_ruleset(self, payload: dict) -> dict:
-        response = self._request("POST", f"/repos/{self.owner}/{self.repo}/rulesets", json=payload)
+        response = self._request(
+            "POST", f"/repos/{self.owner}/{self.repo}/rulesets", json=payload, idempotent=False
+        )
         return _expect_response(response).json()
 
     def update_ruleset(self, ruleset_id: int, payload: dict) -> dict:
