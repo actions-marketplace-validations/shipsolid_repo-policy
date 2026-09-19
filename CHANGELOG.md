@@ -1,6 +1,81 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-09-19)
+
+### Documentation
+
+- Document the repo_settings section and its unavailable outcome
+  ([`d7095a4`](https://github.com/shipsolid/repo-policy/commit/d7095a4358c2e6542fc7a90a84c78b39be46364b))
+
+ARCHITECTURE.md's Domain Model, Container/Component View, and a new Repo-Level Settings subsection;
+  ROADMAP.md's Later section updated to mark this phase shipped.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Features
+
+- Add repo_settings section — delete_branch_on_merge, allow_update_branch
+  ([`e3857e7`](https://github.com/shipsolid/repo-policy/commit/e3857e72ca8a80be032f07221d7506f0722552bb))
+
+First slice of repo-wide (non-branch) settings management, closing part of the gap against a sibling
+  tool's fixed baseline. Establishes the full new architecture end-to-end: RepoSettingsPolicy
+  schema, pure diff translation (policies/repo_settings.py), orchestration (repo_settings.py),
+  rendering, and CLI wiring in audit/plan/apply. diff_security_and_analysis/diff_toggle ship as
+  pure, fully-tested functions here but aren't wired into orchestration yet -- that happens in the
+  task that also adds the matching live GitHubClient method, so no commit in this series ever
+  reports a policy.yml field as drifted that apply can't actually fix. Zero API calls when
+  policy.yml has no repo_settings section, matching every existing adopter's current behavior
+  exactly.
+
+Includes the Phase 2 implementation plan (written earlier in the conversation, corrected here after
+  a real mypy failure surfaced the premature security_and_analysis wiring this commit's message
+  describes avoiding).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Enforce automated_security_fixes (Dependabot security updates)
+  ([`649f107`](https://github.com/shipsolid/repo-policy/commit/649f107540c2426bed7a9d2294356584c1996660))
+
+Must apply after vulnerability_alerts in the same run -- GitHub rejects enabling Dependabot security
+  updates before Dependabot alerts. Guarded two ways: RepoSettingsPolicy's model validator (Task 1)
+  rejects a policy.yml that declares automated_security_fixes: true without also declaring
+  vulnerability_alerts: true, at parse time; apply_repo_settings additionally sequences the two live
+  API calls correctly for the case where both are changing in the same run.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Enforce private_vulnerability_reporting
+  ([`e55403b`](https://github.com/shipsolid/repo-policy/commit/e55403bcc6bfe3117290d6659936bf2bd8c00337))
+
+Free on every repo, but not every repo is eligible (e.g. dependency graph disabled) -- introduces
+  the unavailable outcome, informational and distinct from drift or an error, first used here.
+  GitHubClient._request gains allow_422 (mirroring the existing allow_404) to make this
+  distinguishable from a genuine API error.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Enforce secret_scanning and secret_scanning_push_protection
+  ([`d979394`](https://github.com/shipsolid/repo-policy/commit/d97939476b0f091bc232e25ae5f485c0a24cd8b2))
+
+Highest security value in this series, GHAS-gated -- 422 means no GitHub Advanced Security license,
+  surfaced as unavailable (Task 4's pattern), not an error. Wires diff_security_and_analysis/
+  to_security_and_analysis_payload (pure functions shipped in Task 1) into
+  plan_repo_settings/apply_repo_settings for the first time, now that
+  GitHubClient.update_security_and_analysis exists to make them usable end-to-end. Completes the
+  7-field repo_settings series.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Enforce vulnerability_alerts (Dependabot alerts)
+  ([`d46c538`](https://github.com/shipsolid/repo-policy/commit/d46c538fddf180744ed74e2484518b5c465bb261))
+
+Free on every repo. Foundational for the next field in this series (automated_security_fixes), which
+  GitHub requires this to already be enabled before it can be turned on.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.2.0 (2026-09-19)
 
 ### Bug Fixes
