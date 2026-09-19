@@ -27,10 +27,11 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish to PyPI
-        if: steps.release.outputs.released == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
-
+      # Runs before PyPI publish, not after: these two steps are independent, and the Action's
+      # `uses: shipsolid/repo-policy@v1` consumers must not be blocked by an unrelated PyPI
+      # failure. (A real release found this the hard way: the tag never moved because it was
+      # sequenced after PyPI, and PyPI has been failing on every release since trusted
+      # publishing was never configured.)
       - name: Move floating major tag
         if: steps.release.outputs.released == 'true'
         env:
@@ -39,3 +40,7 @@ jobs:
           MAJOR_TAG="v$(echo "$RELEASE_TAG" | sed -E 's/^v([0-9]+)\..*/\1/')"
           git tag -f "$MAJOR_TAG" "$RELEASE_TAG"
           git push origin "$MAJOR_TAG" --force
+
+      - name: Publish to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
