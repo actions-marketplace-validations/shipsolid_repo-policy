@@ -57,12 +57,13 @@ def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None
     """`resolved` must already have every modeled field filled in (see diff.resolve_desired).
     Rulesets are fully owned by repo-policy once named, so this rebuilds the rules array for
     every MODELED field -- but strict_required_status_checks_policy, `enforcement`
-    (active/evaluate/disabled), `bypass_actors`, and any rule of an unmodeled type (see
+    (active/evaluate/disabled), `bypass_actors`, `conditions.ref_name.exclude` (plus any extra
+    `include` entries beyond repo-policy's own branch ref), and any rule of an unmodeled type (see
     _MANAGED_RULE_TYPES) have no modeled field (see status_checks.to_ruleset_rule for the first),
     so `current_raw` (the ruleset's current GET payload, or None on first creation) is threaded
     through to preserve all of them instead of resetting/dropping them on every apply.
-    `enforcement` defaults to "active" and `bypass_actors` to an empty list only when there's no
-    current state to read from (first creation)."""
+    `enforcement` defaults to "active" and `bypass_actors`/`exclude` to an empty list only when
+    there's no current state to read from (first creation)."""
     if resolved.pull_requests is None:
         raise ValueError(
             "resolved.pull_requests must not be None; pass a BranchPolicy produced by "
@@ -94,11 +95,16 @@ def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None
     if resolved.allow_deletion is False:
         rules.append({"type": "deletion"})
 
+    own_ref = f"refs/heads/{branch}"
+    current_ref_name = current_raw.get("conditions", {}).get("ref_name", {})
+    current_includes = current_ref_name.get("include", [])
+    include = [own_ref] + [ref for ref in current_includes if ref != own_ref]
+
     return {
         "name": ruleset_name(branch),
         "target": "branch",
         "enforcement": current_raw.get("enforcement", "active"),
-        "conditions": {"ref_name": {"include": [f"refs/heads/{branch}"], "exclude": []}},
+        "conditions": {"ref_name": {"include": include, "exclude": current_ref_name.get("exclude", [])}},
         "rules": rules,
         "bypass_actors": current_raw.get("bypass_actors", []),
     }

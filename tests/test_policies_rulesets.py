@@ -139,6 +139,48 @@ def test_to_api_payload_preserves_current_bypass_actors():
     assert payload["bypass_actors"] == [{"actor_id": 1, "actor_type": "Team", "bypass_mode": "always"}]
 
 
+def test_to_api_payload_preserves_current_conditions_exclude():
+    """conditions.ref_name.exclude has no modeled field -- a human-added exclude pattern (e.g. to
+    carve out an automation ref) must survive a full-object replace triggered by an unrelated,
+    modeled field changing."""
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=True,
+    )
+    current_raw = {
+        "id": 7,
+        "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": ["refs/heads/main-bot"]}},
+        "rules": [],
+    }
+    payload = rulesets.to_api_payload("main", resolved, current_raw=current_raw)
+    assert payload["conditions"]["ref_name"]["exclude"] == ["refs/heads/main-bot"]
+    assert payload["conditions"]["ref_name"]["include"] == ["refs/heads/main"]
+
+
+def test_to_api_payload_preserves_extra_current_includes():
+    """A human may have added a second include glob alongside repo-policy's own ref -- it must
+    not be silently dropped, and repo-policy's own ref must always be present."""
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        linear_history=True,
+    )
+    current_raw = {
+        "id": 7,
+        "conditions": {"ref_name": {"include": ["refs/heads/main", "refs/heads/release/*"], "exclude": []}},
+        "rules": [],
+    }
+    payload = rulesets.to_api_payload("main", resolved, current_raw=current_raw)
+    assert payload["conditions"]["ref_name"]["include"] == ["refs/heads/main", "refs/heads/release/*"]
+
+
+def test_to_api_payload_defaults_conditions_on_first_creation():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
+    )
+    payload = rulesets.to_api_payload("main", resolved, current_raw=None)
+    assert payload["conditions"] == {"ref_name": {"include": ["refs/heads/main"], "exclude": []}}
+
+
 def test_to_api_payload_preserves_unmanaged_rule_types():
     """repo-policy has no schema for rule types like commit_message_pattern or merge_queue --
     a human-added rule of an unrecognized type must survive a full-object replace triggered by an
