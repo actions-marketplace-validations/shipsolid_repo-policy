@@ -74,3 +74,31 @@ class GitHubClient:
                 f"GitHub API error {response.status_code} on {method} {path}: {response.text}",
                 status_code=response.status_code,
             )
+
+    def get_branch_protection(self, branch: str) -> dict | None:
+        response = self._request(
+            "GET", f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection", allow_404=True
+        )
+        return response.json() if response is not None else None
+
+    def put_branch_protection(self, branch: str, payload: dict) -> dict:
+        response = self._request(
+            "PUT", f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection", json=payload
+        )
+        assert response is not None
+        return response.json()
+
+    def get_required_signatures(self, branch: str) -> bool:
+        response = self._request(
+            "GET",
+            f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection/required_signatures",
+            allow_404=True,
+        )
+        return bool(response is not None and response.json().get("enabled", False))
+
+    def set_required_signatures(self, branch: str, enabled: bool) -> None:
+        method = "POST" if enabled else "DELETE"
+        self._request(
+            method,
+            f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection/required_signatures",
+        )

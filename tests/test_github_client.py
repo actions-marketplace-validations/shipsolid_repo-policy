@@ -62,3 +62,63 @@ def test_request_raises_immediately_on_non_retryable_4xx(client):
         client._request("GET", "/repos/acme/widgets/forbidden")
     assert exc_info.value.status_code == 401
     assert route.call_count == 1
+
+
+@respx.mock
+def test_get_branch_protection_returns_none_when_unprotected(client):
+    respx.get("https://api.github.com/repos/acme/widgets/branches/main/protection").mock(
+        return_value=httpx.Response(404, json={"message": "Not Found"})
+    )
+    assert client.get_branch_protection("main") is None
+
+
+@respx.mock
+def test_get_branch_protection_returns_payload(client):
+    respx.get("https://api.github.com/repos/acme/widgets/branches/main/protection").mock(
+        return_value=httpx.Response(200, json={"enforce_admins": {"enabled": False}})
+    )
+    assert client.get_branch_protection("main") == {"enforce_admins": {"enabled": False}}
+
+
+@respx.mock
+def test_put_branch_protection_sends_payload(client):
+    route = respx.put("https://api.github.com/repos/acme/widgets/branches/main/protection").mock(
+        return_value=httpx.Response(200, json={"enforce_admins": {"enabled": False}})
+    )
+    result = client.put_branch_protection("main", {"enforce_admins": False})
+    assert result == {"enforce_admins": {"enabled": False}}
+    assert route.calls[0].request.content == b'{"enforce_admins":false}'
+
+
+@respx.mock
+def test_get_required_signatures_false_when_never_enabled(client):
+    respx.get(
+        "https://api.github.com/repos/acme/widgets/branches/main/protection/required_signatures"
+    ).mock(return_value=httpx.Response(404, json={"message": "Not Found"}))
+    assert client.get_required_signatures("main") is False
+
+
+@respx.mock
+def test_get_required_signatures_true_when_enabled(client):
+    respx.get(
+        "https://api.github.com/repos/acme/widgets/branches/main/protection/required_signatures"
+    ).mock(return_value=httpx.Response(200, json={"enabled": True}))
+    assert client.get_required_signatures("main") is True
+
+
+@respx.mock
+def test_set_required_signatures_posts_to_enable(client):
+    route = respx.post(
+        "https://api.github.com/repos/acme/widgets/branches/main/protection/required_signatures"
+    ).mock(return_value=httpx.Response(200, json={"enabled": True}))
+    client.set_required_signatures("main", True)
+    assert route.called
+
+
+@respx.mock
+def test_set_required_signatures_deletes_to_disable(client):
+    route = respx.delete(
+        "https://api.github.com/repos/acme/widgets/branches/main/protection/required_signatures"
+    ).mock(return_value=httpx.Response(204))
+    client.set_required_signatures("main", False)
+    assert route.called
