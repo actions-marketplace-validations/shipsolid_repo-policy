@@ -1,6 +1,155 @@
 # CHANGELOG
 
 
+## v0.4.5 (2026-09-19)
+
+### Bug Fixes
+
+- Clear_restrictions: false no longer reports permanent phantom drift
+  ([`73bf4af`](https://github.com/shipsolid/repo-policy/commit/73bf4afe95a4fecd420a4aaf31b30c392604d5e7))
+
+clear_restrictions=False means "preserve whatever restriction is currently there" -- not "the branch
+  must have a restriction". When current.clear_restrictions is True (no live restriction exists at
+  all), there is nothing to preserve: branch_protection.to_api_payload's restrictions field
+  collapses to None whether resolved.clear_restrictions is True or False, since
+  _restrictions_payload(None) is None either way. diff() still reported this as a real Change every
+  run, so a branch declaring clear_restrictions: false with no existing restriction could never
+  reach a compliant state -- apply "succeeded" but sent the identical payload clear_restrictions:
+  true would have, and the next audit reported the same drift again.
+
+This is a narrower, asymmetric case than the "both empty" fix in d76c30c: the reverse direction (an
+  existing restriction actually being cleared) is still correctly reported as real, applicable
+  drift.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Diff() treats both-empty compound fields as equal, not just raw-equal
+  ([`eb88a7b`](https://github.com/shipsolid/repo-policy/commit/eb88a7b21d91e78e45b67badb21dd7d3768ff7ca))
+
+status_checks: {required: []} (declared empty) and status_checks undeclared both produce the exact
+  same API payload -- to_branch_protection/ to_ruleset_rule return None for an empty required list
+  either way -- but resolve_desired() sets resolved.status_checks to a real StatusChecksPolicy
+  instance in the first case, while branch_protection.from_api/rulesets. from_api represent "nothing
+  configured" as None. Raw `==` treats these as different, so diff() reported permanent phantom
+  drift and apply_branch re-issued a no-op API call on every single run for a branch declaring an
+  empty status_checks block.
+
+Same failure mode for pull_requests: `{required: false, approvals: 5}` never raw-equals the
+  canonical "nothing configured" PullRequestPolicy (approvals/code_owner_review differ), even though
+  both produce an identical None payload once required is False --
+  to_branch_protection/to_ruleset_rule never look at the other sub-fields in that case.
+
+diff()'s per-field comparison now also treats two values as equal when both are "empty" per the
+  field's own existing _is_empty() semantics (already used for add/remove/modify classification) --
+  a no-op for every plain boolean field, since raw equality already catches those; it only changes
+  behavior for the two compound types where "empty" isn't a single canonical value.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve unmanaged rule types on ruleset updates
+  ([`31daf75`](https://github.com/shipsolid/repo-policy/commit/31daf75472016e0f2a694418deb926235ceda5ef))
+
+Broader version of d7a82af's enforcement/bypass_actors gap: to_api_payload() rebuilt the entire
+  `rules` array from scratch, containing only the 6 rule types repo-policy models (pull_request,
+  required_status_checks, required_signatures, required_linear_history, non_fast_forward, deletion).
+  GitHub Rulesets support many more (commit_message_pattern, tag_name_pattern, merge_queue,
+  workflows, code_scanning, file_path_restriction, ...) -- any human-added rule of one of those
+  types was silently dropped the next time repo-policy touched that ruleset for an unrelated,
+  modeled-field change, with no warning from diff/plan/audit since none of them are modeled fields.
+
+Now carries forward any rule whose type isn't in the newly-introduced _MANAGED_RULE_TYPES set,
+  verbatim, alongside rebuilding the ones repo-policy actually manages.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Repo-settings CLI output no longer overstates or hides drift
+  ([`cd07043`](https://github.com/shipsolid/repo-policy/commit/cd07043e710b0f82d7d4d6308465e88930dd52e8))
+
+Two related bugs in how cli.py surfaces RepoSettingsResult:
+
+1. apply's "repo settings: applied N change(s)" counted every entry in result.changes, including
+  ones that ended up in result.unavailable (a 422 during apply -- distinct from result.applied
+  itself, which was already fixed in be11aa8 to exclude them from the pass/fail boolean, but the
+  printed count still didn't). A partial success (1 of 2 changes landed) printed "applied 2
+  change(s)" right next to the "unavailable" line contradicting it.
+
+2. _run_check (audit/plan) only reported repo_settings_result.unavailable when result.changes was
+  also non-empty. A repo-setting that's declared but structurally ineligible (e.g.
+  private_vulnerability_reporting on a repo that doesn't support it) with zero other drift was
+  silently dropped entirely -- audit printed "compliant" and exited 0 even though that part of the
+  policy can never actually be satisfied.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Restore retry for idempotent POST calls, keep it off only for create_ruleset
+  ([`14fff26`](https://github.com/shipsolid/repo-policy/commit/14fff2672b2788a673406967942b73f61d8b84fb))
+
+Regression in f2c3dea's non-idempotent-POST guard: it blocked retries for EVERY POST, but
+  set_required_signatures's enable path is also a POST and IS idempotent (repeating it is a no-op)
+  -- a transient 5xx on that call now aborted the whole apply run instead of retrying, while the
+  functionally identical PUT-based enable_vulnerability_alerts() etc. would have retried and likely
+  succeeded.
+
+_request() now takes an explicit idempotent=True default; only create_ruleset (the one call that
+  actually creates a new resource each time) opts out with idempotent=False. Every other call, POST
+  or not, retries on 5xx as before this was ever touched.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Stop YAML 1.1's yes/no/on/off from silently coercing to booleans
+  ([`8c9d322`](https://github.com/shipsolid/repo-policy/commit/8c9d3223bc1c1637511254690d2c7a32916a62dd))
+
+yaml.safe_load's default resolver treats bare yes/no/on/off (any casing) as booleans, not just
+  true/false -- confirmed: yaml.safe_load("no") returns False. A branch name or status-check context
+  that happens to be one of those words (e.g. `branches: {no: {...}}`) was silently turned into a
+  Python bool before pydantic ever validated it, surfacing as a confusing "Input should be a valid
+  string" error on a dict key that never looks like what the user typed.
+
+_StrictBoolLoader subclasses SafeLoader and removes only the y/Y/n/N/o/O implicit-resolver entries
+  for the bool tag -- true/false (any casing) still resolve as booleans, nothing else changes. This
+  is NOT yaml.load()'s usual security footgun: no constructors were added or changed, so it remains
+  exactly as safe as SafeLoader against arbitrary object construction (verified:
+  !!python/object/apply tags still raise ConstructorError).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Transform restrictions from GET shape to PUT shape before re-sending
+  ([`78eba5f`](https://github.com/shipsolid/repo-policy/commit/78eba5fdf06c7c2c4adf71ee420f4ad3fbd545a3))
+
+to_api_payload() re-sent current_raw["restrictions"] verbatim when clear_restrictions is False.
+  GitHub's GET response shapes restrictions.users/teams/apps as arrays of full objects (login/slug
+  plus other metadata); the PUT request body expects arrays of bare login/slug strings. Any branch
+  with an existing push restriction and clear_restrictions left at its inherited managed-scope
+  default (False) would 422 the entire PUT the next time ANY other declared field changed --
+  aborting the whole apply run with GitHubAPIError, unrelated to what was actually being changed.
+
+The existing tests never caught this because their current_raw fixtures already used the flat string
+  shape instead of GitHub's real GET shape -- fixed those too, so they now exercise the actual
+  transform.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Refactoring
+
+- Dedupe repo-settings field groupings, fix resolve_desired's docstring
+  ([`48418a4`](https://github.com/shipsolid/repo-policy/commit/48418a455b3b34b4d53493069c1f75dfb81be630))
+
+apply_repo_settings() re-derived which Change.field values belong to the "flat settings" and
+  "security_and_analysis" PATCH groups via inline tuple literals, byte-identical to but independent
+  of policies/repo_settings.py's _FLAT_FIELDS/_SECURITY_AND_ANALYSIS_FIELDS (the ones
+  diff_flat_settings/ diff_security_and_analysis already use to detect drift in the first place).
+  Currently in sync, but a future field added to one and not the other would mean plan/audit
+  correctly show a field needing a change while apply silently excludes it from the PATCH payload --
+  reads as success, never sent to GitHub. Now imports and reuses the same tuples.
+
+Also corrects resolve_desired()'s docstring, which claimed the result "always has every field
+  concretely set" -- status_checks' own permissive value is deliberately None (matching how from_api
+  represents "nothing configured"), so that one field is the documented exception, not an oversight
+  diff() has to work around.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.4.4 (2026-09-19)
 
 ### Bug Fixes
