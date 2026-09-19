@@ -168,6 +168,32 @@ def test_is_empty_does_not_misfire_on_unrelated_object_with_a_required_attribute
     assert _is_empty("some_field", NotAPolicyValue()) is False
 
 
+def test_diff_treats_declared_empty_status_checks_as_equivalent_to_undeclared():
+    """status_checks: {required: []} and status_checks entirely undeclared both produce the same
+    API payload (status_checks.to_branch_protection/to_ruleset_rule both return None for an empty
+    required list) -- diff() must not report drift just because one side is StatusChecksPolicy
+    (required=[]) and the other is the None that branch_protection.from_api/rulesets.from_api use
+    for "nothing configured". Without this, a declared-but-empty status_checks block reports
+    permanent phantom drift and re-issues a no-op API call on every apply, forever."""
+    current = PERMISSIVE.model_copy(update={"status_checks": None})
+    desired = PERMISSIVE.model_copy(update={"status_checks": StatusChecksPolicy(required=[])})
+    assert diff(desired, current) == []
+
+
+def test_diff_treats_declared_not_required_pull_requests_as_equivalent_regardless_of_other_fields():
+    """pull_requests: {required: false, approvals: 5} and the canonical 'nothing configured'
+    PullRequestPolicy both produce the same API payload (to_branch_protection/to_ruleset_rule
+    return None whenever required is False, regardless of approvals/code_owner_review) -- diff()
+    must not report drift over sub-fields that are irrelevant once required is False."""
+    current = PERMISSIVE.model_copy(
+        update={"pull_requests": PullRequestPolicy(required=False, approvals=0, code_owner_review=False)}
+    )
+    desired = PERMISSIVE.model_copy(
+        update={"pull_requests": PullRequestPolicy(required=False, approvals=5, code_owner_review=True)}
+    )
+    assert diff(desired, current) == []
+
+
 def test_clear_restrictions_inverted_polarity_remove_when_clearing_an_existing_restriction():
     """clear_restrictions=False means an actual restriction exists (non-permissive); True means
     it's cleared (permissive) -- the same true-means-permissive polarity as allow_force_push/

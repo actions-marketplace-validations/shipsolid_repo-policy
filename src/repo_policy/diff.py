@@ -133,6 +133,14 @@ def diff(desired: BranchPolicy, current: BranchPolicy) -> list[Change]:
         current_value = getattr(current, field)
         if desired_value == current_value:
             continue
+        # Not raw-equal, but both may still be "empty" in a way that produces the identical API
+        # payload -- e.g. status_checks=StatusChecksPolicy(required=[]) vs the None that
+        # branch_protection.from_api/rulesets.from_api use for "nothing configured", or
+        # pull_requests differing only in sub-fields that to_branch_protection/to_ruleset_rule
+        # ignore once required=False. Comparing raw equality alone reports permanent phantom
+        # drift and re-issues a no-op API call on every apply for either case.
+        if _is_empty(field, desired_value) and _is_empty(field, current_value):
+            continue
         changes.append(
             Change(
                 field=field,
