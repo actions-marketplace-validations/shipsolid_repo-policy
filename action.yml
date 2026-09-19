@@ -1,0 +1,19 @@
+name: "repo-policy"
+description: "Declarative GitHub repository governance — audit, plan, or apply a policy.yml."
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  config:
+    description: "Path to the policy YAML file, relative to the repo root."
+    required: false
+    default: ".github/repository-policy.yml"
+  mode:
+    description: "One of: validate, audit, plan, apply."
+    required: false
+    default: "audit"
+
+runs:
+  using: "docker"
+  image: "Dockerfile"
