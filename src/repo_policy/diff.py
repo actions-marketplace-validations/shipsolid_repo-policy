@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
-from repo_policy.models import BranchPolicy, PullRequestPolicy
+from repo_policy.models import _RULESET_UNSUPPORTED_FIELDS, BranchPolicy, PullRequestPolicy
 
 ChangeAction = Literal["add", "modify", "remove"]
 
@@ -30,6 +30,10 @@ _FIELDS = (
     "clear_restrictions",
 )
 
+# enforce_admins/required_conversation_resolution/lock_branch/allow_fork_syncing/
+# clear_restrictions' permissive values come from models._RULESET_UNSUPPORTED_FIELDS -- the two
+# describe the same fact (this field's harmless no-op value) and must agree, so this is the one
+# place that reads it rather than re-declaring a second copy.
 _SCHEMA_DEFAULTS: dict[str, Any] = {
     "pull_requests": PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
     # None, not StatusChecksPolicy(required=[]): branch_protection.from_api / rulesets.from_api
@@ -40,11 +44,7 @@ _SCHEMA_DEFAULTS: dict[str, Any] = {
     "linear_history": False,
     "allow_force_push": True,
     "allow_deletion": True,
-    "enforce_admins": False,
-    "required_conversation_resolution": False,
-    "lock_branch": False,
-    "allow_fork_syncing": False,
-    "clear_restrictions": True,
+    **_RULESET_UNSUPPORTED_FIELDS,
 }
 
 # allow_force_push/allow_deletion/clear_restrictions have inverted polarity vs. every other
