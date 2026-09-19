@@ -28,9 +28,9 @@ enforced by convention, not tooling — there's no coverage gate in CI today (se
   the `branch_protection` and `ruleset` backends must respond to it. This exists specifically
   because a bug once shipped with zero test coverage in exactly the gap this test now closes.
 
-## What mocking alone could not catch — three real bugs, found only by testing against a live repo
+## What mocking alone could not catch — four real bugs, found only by testing against a live repo
 
-Mocked tests describe the API the way the author believes it behaves. All three of these bugs
+Mocked tests describe the API the way the author believes it behaves. All four of these bugs
 passed a 100%-green mocked suite before being found:
 
 1. **Silent field clobbering.** `apply` rebuilt the entire `required_pull_request_reviews` /
@@ -50,8 +50,23 @@ passed a 100%-green mocked suite before being found:
    only updates `pyproject.toml`; the hardcoded string in `src/repo_policy/__init__.py` silently
    drifted across 4 releases. Found by literally running `pip install repo-policy` in a clean venv
    and checking `repo_policy.__version__` against `pip show`'s reported version.
+4. **`allow_fork_syncing`'s wrong permissive default.** `diff._SCHEMA_DEFAULTS["allow_fork_syncing"]`
+   was `True`, chosen to match the sibling `repo_security` tool's own recommended baseline value —
+   never independently verified against live GitHub. **Only surfaced by running `repo-policy apply`
+   against a real repository** and independently checking the resulting branch protection via
+   `gh api`: GitHub silently discards `allow_fork_syncing: true` on any branch where `lock_branch`
+   is `false`, resetting it to `false` regardless of what's sent. Because `True` was also the value
+   `from_api(None, ...)` used to represent "nothing configured," `diff.resolve_desired()`'s
+   managed-scope current-state inheritance carried the broken pairing into *any* first-time `apply`
+   against a previously-unprotected branch — even for a `policy.yml` that never mentions
+   `allow_fork_syncing` at all. No mocked test could catch this: it requires a real GitHub API
+   response to observe that a value sent in a `PUT` doesn't persist. Fixed by flipping the default
+   to `False` (the value GitHub always honors regardless of `lock_branch`) and adding a model
+   validator that rejects an explicit `allow_fork_syncing: true` declaration unless `lock_branch:
+   true` is also declared — see
+   `docs/superpowers/plans/2026-09-19-fix-allow-fork-syncing-polarity.md`.
 
-The pattern across all three: the bug was invisible to any test that only asserted repo-policy's
+The pattern across all four: the bug was invisible to any test that only asserted repo-policy's
 own internal consistency. Each one required checking repo-policy's output against an independent,
 real source of truth — a live repo's actual API state, or a real PyPI install.
 
