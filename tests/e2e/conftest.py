@@ -33,9 +33,8 @@ def live_client(e2e_token: str) -> Iterator[GitHubClient]:
 
 @pytest.fixture(scope="session")
 def raw_http(e2e_token: str) -> Iterator[httpx.Client]:
-    """Raw client for test-only repo-reset calls (unconditional protection removal, branch
-    creation) that repo-policy's own GitHubClient has no production reason to expose -- see
-    this plan's Global Constraints."""
+    """Raw client for test-only repo-reset calls (unconditional protection removal, ref lookups)
+    that repo-policy's own GitHubClient has no production reason to expose."""
     with httpx.Client(
         base_url="https://api.github.com",
         headers={
@@ -58,20 +57,20 @@ def _strip_protection_and_rulesets(live_client: GitHubClient, raw_http: httpx.Cl
 
 
 def _ensure_ruleset_branch_exists(raw_http: httpx.Client) -> None:
+    """Verifies (does not create) RULESET_BRANCH. REPO_POLICY_E2E_TOKEN is scoped to
+    `Administration: Read and write` only (see SECURITY.md) -- branch/ref creation needs the
+    separate `Contents: Read and write` fine-grained PAT permission, which this token
+    deliberately does not have (least-privilege: it only needs to manage protection/rulesets/
+    settings, never git data). RULESET_BRANCH is therefore a one-time manual bootstrap on the
+    persistent fixture repo, not something this suite (re)creates -- e.g.:
+    `gh api repos/{owner}/{repo}/git/refs -f ref=refs/heads/{RULESET_BRANCH} -f sha=<main's sha>`.
+    """
     ref_response = raw_http.get(f"/repos/{LIVE_OWNER}/{LIVE_NAME}/git/ref/heads/{RULESET_BRANCH}")
-    if ref_response.status_code == 200:
-        return
-    assert ref_response.status_code == 404, ref_response.text
-
-    main_response = raw_http.get(f"/repos/{LIVE_OWNER}/{LIVE_NAME}/branches/main")
-    assert main_response.status_code == 200, main_response.text
-    main_sha = main_response.json()["commit"]["sha"]
-
-    create_response = raw_http.post(
-        f"/repos/{LIVE_OWNER}/{LIVE_NAME}/git/refs",
-        json={"ref": f"refs/heads/{RULESET_BRANCH}", "sha": main_sha},
+    assert ref_response.status_code == 200, (
+        f"{RULESET_BRANCH} branch is missing on {LIVE_REPO} and REPO_POLICY_E2E_TOKEN cannot "
+        f"create it -- see this function's docstring to recreate it manually. Response: "
+        f"{ref_response.text}"
     )
-    assert create_response.status_code == 201, create_response.text
 
 
 @pytest.fixture(scope="session")
