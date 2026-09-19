@@ -61,3 +61,29 @@ def test_to_api_payload_preserves_unmodeled_current_fields():
     payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
     assert payload["enforce_admins"] is True
     assert payload["restrictions"] == {"users": ["octocat"], "teams": []}
+
+
+def test_to_api_payload_preserves_unmodeled_nested_review_and_check_fields():
+    """Regression test: a targeted change to one declared field (allow_force_push) must not
+    silently reset dismiss_stale_reviews/require_last_push_approval/strict — fields repo-policy
+    doesn't model but a human may have set manually on GitHub."""
+    current_raw = {
+        "required_pull_request_reviews": {
+            "required_approving_review_count": 2,
+            "require_code_owner_reviews": True,
+            "dismiss_stale_reviews": True,
+            "require_last_push_approval": True,
+        },
+        "required_status_checks": {"contexts": ["build"], "checks": [], "strict": True},
+    }
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=True, approvals=2, code_owner_review=True),
+        status_checks=StatusChecksPolicy(required=["build"]),
+        linear_history=False,
+        allow_force_push=False,  # the only field actually changing
+        allow_deletion=True,
+    )
+    payload = branch_protection.to_api_payload(resolved, current_raw=current_raw)
+    assert payload["required_pull_request_reviews"]["dismiss_stale_reviews"] is True
+    assert payload["required_pull_request_reviews"]["require_last_push_approval"] is True
+    assert payload["required_status_checks"]["strict"] is True

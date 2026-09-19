@@ -16,6 +16,18 @@ def test_to_branch_protection_builds_payload():
     ]
 
 
+def test_to_branch_protection_defaults_strict_false_when_no_current_state():
+    payload = status_checks.to_branch_protection(StatusChecksPolicy(required=["build"]), current=None)
+    assert payload["strict"] is False
+
+
+def test_to_branch_protection_preserves_strict_from_current_state():
+    payload = status_checks.to_branch_protection(
+        StatusChecksPolicy(required=["build"]), current={"strict": True, "contexts": ["build"]}
+    )
+    assert payload["strict"] is True
+
+
 def test_from_branch_protection_none_when_absent():
     assert status_checks.from_branch_protection(None) is None
 

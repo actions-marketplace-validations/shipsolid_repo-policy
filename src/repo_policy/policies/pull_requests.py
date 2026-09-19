@@ -3,14 +3,18 @@ from __future__ import annotations
 from repo_policy.models import PullRequestPolicy
 
 
-def to_branch_protection(policy: PullRequestPolicy) -> dict | None:
+def to_branch_protection(policy: PullRequestPolicy, current: dict | None = None) -> dict | None:
+    """`current` is the branch's existing required_pull_request_reviews GET payload (or None on
+    first creation). repo-policy doesn't model dismiss_stale_reviews/require_last_push_approval,
+    so they're read through from current state rather than reset to False on every apply."""
     if not policy.required:
         return None
+    current = current or {}
     return {
         "required_approving_review_count": policy.approvals,
         "require_code_owner_reviews": policy.code_owner_review,
-        "dismiss_stale_reviews": False,
-        "require_last_push_approval": False,
+        "dismiss_stale_reviews": current.get("dismiss_stale_reviews", False),
+        "require_last_push_approval": current.get("require_last_push_approval", False),
     }
 
 

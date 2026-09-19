@@ -3,11 +3,15 @@ from __future__ import annotations
 from repo_policy.models import StatusChecksPolicy
 
 
-def to_branch_protection(policy: StatusChecksPolicy | None) -> dict | None:
+def to_branch_protection(policy: StatusChecksPolicy | None, current: dict | None = None) -> dict | None:
+    """`current` is the branch's existing required_status_checks GET payload (or None on first
+    creation). repo-policy doesn't model the 'require branches up to date' (strict) setting, so
+    it's read through from current state rather than reset to False on every apply."""
     if policy is None or not policy.required:
         return None
+    current = current or {}
     return {
-        "strict": False,
+        "strict": current.get("strict", False),
         "contexts": list(policy.required),
         "checks": [{"context": name, "app_id": None} for name in policy.required],
     }

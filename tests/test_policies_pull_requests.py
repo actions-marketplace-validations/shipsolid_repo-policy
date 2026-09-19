@@ -13,6 +13,21 @@ def test_to_branch_protection_builds_payload():
     assert payload["require_code_owner_reviews"] is True
 
 
+def test_to_branch_protection_defaults_unmodeled_fields_false_when_no_current_state():
+    policy = PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
+    payload = pull_requests.to_branch_protection(policy, current=None)
+    assert payload["dismiss_stale_reviews"] is False
+    assert payload["require_last_push_approval"] is False
+
+
+def test_to_branch_protection_preserves_unmodeled_fields_from_current_state():
+    policy = PullRequestPolicy(required=True, approvals=2, code_owner_review=True)
+    current = {"dismiss_stale_reviews": True, "require_last_push_approval": True}
+    payload = pull_requests.to_branch_protection(policy, current=current)
+    assert payload["dismiss_stale_reviews"] is True
+    assert payload["require_last_push_approval"] is True
+
+
 def test_from_branch_protection_none_means_not_required():
     result = pull_requests.from_branch_protection(None)
     assert result.required is False
