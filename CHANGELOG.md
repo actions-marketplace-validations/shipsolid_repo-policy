@@ -1,6 +1,42 @@
 # CHANGELOG
 
 
+## v0.4.0 (2026-09-19)
+
+### Documentation
+
+- Document clear_restrictions and the closed repo_security gap
+  ([`376090b`](https://github.com/shipsolid/repo-policy/commit/376090bb654ed4e5ac6921a941591f0cb277a663))
+
+ARCHITECTURE.md's Domain Model and Apply Safety Model sections corrected -- restrictions is no
+  longer in the unmodeled-fields list. ROADMAP.md's Now table gets a row matching the Phase 1/2
+  convention.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Features
+
+- Model clear_restrictions, closing the last repo_security field gap
+  ([`9abd10a`](https://github.com/shipsolid/repo-policy/commit/9abd10a663aec1d9e3fa13d709af34dcfa13bcf4))
+
+Closes the final field-level gap against the sibling repo_security tool's baseline: GitHub
+  branch-protection restrictions (push allowlist), which repo_security unconditionally clears to
+  null on every apply. repo-policy only supports declaring the clear -- not setting an arbitrary
+  allowlist, since neither repo-policy's schema nor repo_security itself ever manages one.
+  Branch_protection-only, guarded by the same ruleset-unsupported-fields validator as
+  enforce_admins/ required_conversation_resolution/lock_branch/allow_fork_syncing.
+
+Also excludes clear_restrictions from test_policies_parity.py's generic BRANCH_PROTECTION_FIELDS
+  parametrize (mirroring the existing signed_commits exclusion): that test calls to_api_payload with
+  current_raw=None for both sides of the comparison, so there's no existing restrictions value to
+  preserve either way -- clear_restrictions True and False both collapse to restrictions: None
+  there, a real blind spot in that specific test setup, not a code bug. The actual round-trip is
+  proven by two dedicated tests using realistic current_raw data. Plan doc updated to record this,
+  found only by running the tests.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.3.0 (2026-09-19)
 
 ### Documentation
