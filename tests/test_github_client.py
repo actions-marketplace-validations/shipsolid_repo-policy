@@ -307,3 +307,63 @@ def test_enable_automated_security_fixes(client):
     )
     client.enable_automated_security_fixes()
     assert route.called
+
+
+@respx.mock
+def test_request_allow_422_returns_none_on_422(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    response = client._request(
+        "GET", "/repos/acme/widgets/private-vulnerability-reporting", allow_422=True
+    )
+    assert response is None
+
+
+@respx.mock
+def test_request_without_allow_422_raises_on_422(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    with pytest.raises(GitHubAPIError):
+        client._request("GET", "/repos/acme/widgets/private-vulnerability-reporting")
+
+
+@respx.mock
+def test_get_private_vulnerability_reporting_enabled(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(200, json={"enabled": True})
+    )
+    assert client.get_private_vulnerability_reporting() is True
+
+
+@respx.mock
+def test_get_private_vulnerability_reporting_unavailable_via_404(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(404)
+    )
+    assert client.get_private_vulnerability_reporting() is None
+
+
+@respx.mock
+def test_get_private_vulnerability_reporting_unavailable_via_422(client):
+    respx.get("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    assert client.get_private_vulnerability_reporting() is None
+
+
+@respx.mock
+def test_enable_private_vulnerability_reporting_succeeds(client):
+    respx.put("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(204)
+    )
+    assert client.enable_private_vulnerability_reporting() is True
+
+
+@respx.mock
+def test_enable_private_vulnerability_reporting_unavailable_via_422(client):
+    respx.put("https://api.github.com/repos/acme/widgets/private-vulnerability-reporting").mock(
+        return_value=httpx.Response(422, json={"message": "not eligible"})
+    )
+    assert client.enable_private_vulnerability_reporting() is False

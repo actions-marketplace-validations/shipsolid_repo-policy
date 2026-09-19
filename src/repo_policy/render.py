@@ -23,6 +23,7 @@ _REPO_SETTINGS_LABELS = {
     "allow_update_branch": "Allow update branch",
     "vulnerability_alerts": "Dependabot alerts",
     "automated_security_fixes": "Dependabot security updates",
+    "private_vulnerability_reporting": "Private vulnerability reporting",
 }
 
 

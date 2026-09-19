@@ -62,12 +62,15 @@ class GitHubClient:
         json: dict | None = None,
         params: dict | None = None,
         allow_404: bool = False,
+        allow_422: bool = False,
     ) -> httpx.Response | None:
         attempt = 0
         while True:
             response = self._client.request(method, path, json=json, params=params)
 
             if response.status_code == 404 and allow_404:
+                return None
+            if response.status_code == 422 and allow_422:
                 return None
             if response.status_code < 400:
                 return response
@@ -139,6 +142,21 @@ class GitHubClient:
 
     def enable_automated_security_fixes(self) -> None:
         self._request("PUT", f"/repos/{self.owner}/{self.repo}/automated-security-fixes")
+
+    def get_private_vulnerability_reporting(self) -> bool | None:
+        """None means unavailable (404 or 422) -- not every repo is eligible."""
+        response = self._request(
+            "GET", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting",
+            allow_404=True, allow_422=True,
+        )
+        return bool(response.json().get("enabled", True)) if response is not None else None
+
+    def enable_private_vulnerability_reporting(self) -> bool:
+        """Returns False (meaning unavailable) on 422; True on success."""
+        response = self._request(
+            "PUT", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting", allow_422=True
+        )
+        return response is not None
 
     def list_rulesets(self) -> list[dict]:
         results: list[dict] = []

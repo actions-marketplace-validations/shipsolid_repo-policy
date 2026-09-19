@@ -66,3 +66,9 @@ def test_render_repo_settings_shows_a_change():
     ])
     output = render_repo_settings("acme/widgets", result)
     assert "+ Delete branch on merge" in output
+
+
+def test_render_repo_settings_shows_unavailable():
+    result = RepoSettingsResult(unavailable=["private_vulnerability_reporting"])
+    output = render_repo_settings("acme/widgets", result)
+    assert "? Private vulnerability reporting unavailable on this repository" in output

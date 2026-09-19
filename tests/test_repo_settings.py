@@ -66,6 +66,26 @@ def test_apply_repo_settings_enables_vulnerability_alerts():
     client.enable_vulnerability_alerts.assert_called_once()
 
 
+def test_plan_repo_settings_records_unavailable_when_pvr_ineligible():
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_private_vulnerability_reporting.return_value = None
+    config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(private_vulnerability_reporting=True))
+    result = plan_repo_settings(client, config)
+    assert result.changes == []
+    assert result.unavailable == ["private_vulnerability_reporting"]
+
+
+def test_apply_repo_settings_records_unavailable_when_enable_hits_422():
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_private_vulnerability_reporting.return_value = False
+    client.enable_private_vulnerability_reporting.return_value = False
+    config = PolicyConfig(version=1, branches={}, repo_settings=RepoSettingsPolicy(private_vulnerability_reporting=True))
+    result = apply_repo_settings(client, config)
+    assert "private_vulnerability_reporting" in result.unavailable
+
+
 def test_apply_repo_settings_enables_alerts_before_security_fixes():
     """Both fields are drifted in the same apply -- vulnerability_alerts must be enabled first,
     since GitHub rejects enabling automated_security_fixes before it."""

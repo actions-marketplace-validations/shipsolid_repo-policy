@@ -38,6 +38,15 @@ def plan_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSettin
         current = client.get_automated_security_fixes()
         result.changes.extend(diff_toggle("automated_security_fixes", current, desired.automated_security_fixes))
 
+    if desired.private_vulnerability_reporting is not None:
+        current_pvr = client.get_private_vulnerability_reporting()
+        if current_pvr is None:
+            result.unavailable.append("private_vulnerability_reporting")
+        else:
+            result.changes.extend(
+                diff_toggle("private_vulnerability_reporting", current_pvr, desired.private_vulnerability_reporting)
+            )
+
     return result
 
 
@@ -63,6 +72,11 @@ def apply_repo_settings(client: GitHubClient, config: PolicyConfig) -> RepoSetti
     # ordering is what makes the two live API calls land in the right sequence.
     if "automated_security_fixes" in changed_fields:
         client.enable_automated_security_fixes()
+
+    if "private_vulnerability_reporting" in changed_fields:
+        applied = client.enable_private_vulnerability_reporting()
+        if not applied:
+            result.unavailable.append("private_vulnerability_reporting")
 
     result.applied = bool(result.changes)
     return result
