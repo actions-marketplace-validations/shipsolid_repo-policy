@@ -25,6 +25,7 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
             allow_deletion=True,
             enforce_admins=False,
             required_conversation_resolution=False,
+            lock_branch=False,
         )
     return BranchPolicy(
         enforcement="branch_protection",
@@ -36,6 +37,7 @@ def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
         allow_deletion=_unwrap(data.get("allow_deletions"), True),
         enforce_admins=_unwrap(data.get("enforce_admins"), False),
         required_conversation_resolution=_unwrap(data.get("required_conversation_resolution"), False),
+        lock_branch=_unwrap(data.get("lock_branch"), False),
     )
 
 
@@ -60,4 +62,5 @@ def to_api_payload(resolved: BranchPolicy, current_raw: dict | None) -> dict:
         "allow_force_pushes": bool(resolved.allow_force_push),
         "allow_deletions": bool(resolved.allow_deletion),
         "required_conversation_resolution": bool(resolved.required_conversation_resolution),
+        "lock_branch": bool(resolved.lock_branch),
     }

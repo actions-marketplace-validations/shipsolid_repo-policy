@@ -24,7 +24,7 @@ class StatusChecksPolicy(BaseModel):
 # `enforce_admins: false` under `enforcement: ruleset` is a harmless no-op declaration and is
 # allowed; `enforce_admins: true` is a real restriction with no ruleset equivalent and is rejected.
 _RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
-    "enforce_admins": False, "required_conversation_resolution": False,
+    "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
 }
 
 
@@ -39,6 +39,7 @@ class BranchPolicy(BaseModel):
     allow_deletion: bool | None = None
     enforce_admins: bool | None = None
     required_conversation_resolution: bool | None = None
+    lock_branch: bool | None = None
 
     @model_validator(mode="after")
     def _reject_ruleset_unsupported_fields(self) -> "BranchPolicy":

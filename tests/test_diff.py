@@ -10,6 +10,7 @@ PERMISSIVE = BranchPolicy(
     allow_deletion=True,
     enforce_admins=False,
     required_conversation_resolution=False,
+    lock_branch=False,
 )
 
 

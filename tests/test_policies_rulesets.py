@@ -18,6 +18,11 @@ def test_from_api_hardcodes_required_conversation_resolution_false():
     assert rulesets.from_api({"rules": []}).required_conversation_resolution is False
 
 
+def test_from_api_hardcodes_lock_branch_false():
+    assert rulesets.from_api(None).lock_branch is False
+    assert rulesets.from_api({"rules": []}).lock_branch is False
+
+
 def test_from_api_none_means_fully_permissive():
     result = rulesets.from_api(None)
     assert result.pull_requests == PullRequestPolicy(required=False, approvals=0, code_owner_review=False)

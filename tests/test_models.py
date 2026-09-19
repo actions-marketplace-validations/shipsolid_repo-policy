@@ -47,6 +47,16 @@ def test_branch_policy_allows_required_conversation_resolution_under_branch_prot
     assert policy.required_conversation_resolution is True
 
 
+def test_branch_policy_rejects_lock_branch_under_ruleset():
+    with pytest.raises(ValidationError, match="lock_branch"):
+        BranchPolicy(enforcement="ruleset", lock_branch=True)
+
+
+def test_branch_policy_allows_lock_branch_under_branch_protection():
+    policy = BranchPolicy(enforcement="branch_protection", lock_branch=True)
+    assert policy.lock_branch is True
+
+
 def test_policy_config_parses_nested_branches():
     config = PolicyConfig(
         version=1,
