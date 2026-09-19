@@ -47,6 +47,23 @@ def test_to_ruleset_rule_builds_rule():
     assert rule["parameters"]["required_status_checks"] == [{"context": "build"}]
 
 
+def test_to_ruleset_rule_defaults_strict_false_when_no_current_state():
+    rule = status_checks.to_ruleset_rule(StatusChecksPolicy(required=["build"]), current=None)
+    assert rule["parameters"]["strict_required_status_checks_policy"] is False
+
+
+def test_to_ruleset_rule_preserves_strict_from_current_state():
+    current_rule = {
+        "type": "required_status_checks",
+        "parameters": {
+            "required_status_checks": [{"context": "build"}],
+            "strict_required_status_checks_policy": True,
+        },
+    }
+    rule = status_checks.to_ruleset_rule(StatusChecksPolicy(required=["build"]), current=current_rule)
+    assert rule["parameters"]["strict_required_status_checks_policy"] is True
+
+
 def test_from_ruleset_rule_none_when_absent():
     assert status_checks.from_ruleset_rule(None) is None
 

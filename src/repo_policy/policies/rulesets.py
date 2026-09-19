@@ -46,22 +46,28 @@ def from_api(data: dict | None) -> BranchPolicy:
     )
 
 
-def to_api_payload(branch: str, resolved: BranchPolicy) -> dict:
+def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None = None) -> dict:
     """`resolved` must already have every modeled field filled in (see diff.resolve_desired).
     Rulesets are fully owned by repo-policy once named, so this is a full replace of the rules
-    array — there are no unmodeled fields to preserve, unlike branch_protection.to_api_payload."""
+    array for every MODELED field -- but strict_required_status_checks_policy has no modeled
+    field (see status_checks.to_ruleset_rule), so `current_raw` (the ruleset's current GET
+    payload, or None on first creation) is threaded through to preserve it instead of resetting
+    it to False on every apply."""
     if resolved.pull_requests is None:
         raise ValueError(
             "resolved.pull_requests must not be None; pass a BranchPolicy produced by "
             "diff.resolve_desired(), which always fills every modeled field"
         )
+    current_rules_by_type = {rule["type"]: rule for rule in (current_raw or {}).get("rules", [])}
     rules: list[dict] = []
 
     pr_rule = pull_requests.to_ruleset_rule(resolved.pull_requests)
     if pr_rule is not None:
         rules.append(pr_rule)
 
-    sc_rule = status_checks.to_ruleset_rule(resolved.status_checks)
+    sc_rule = status_checks.to_ruleset_rule(
+        resolved.status_checks, current=current_rules_by_type.get("required_status_checks")
+    )
     if sc_rule is not None:
         rules.append(sc_rule)
 

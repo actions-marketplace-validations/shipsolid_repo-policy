@@ -26,14 +26,21 @@ def from_branch_protection(data: dict | None) -> StatusChecksPolicy | None:
     return StatusChecksPolicy(required=list(contexts))
 
 
-def to_ruleset_rule(policy: StatusChecksPolicy | None) -> dict | None:
+def to_ruleset_rule(policy: StatusChecksPolicy | None, current: dict | None = None) -> dict | None:
+    """`current` is the existing rules-array entry of type "required_status_checks" (or None on
+    first creation). repo-policy doesn't model strict_required_status_checks_policy, so it's read
+    through from current state rather than reset to False on every apply -- the ruleset-backend
+    counterpart of to_branch_protection()'s `current` read-through, for the exact same reason."""
     if policy is None or not policy.required:
         return None
+    current_strict = False
+    if current is not None:
+        current_strict = current.get("parameters", {}).get("strict_required_status_checks_policy", False)
     return {
         "type": "required_status_checks",
         "parameters": {
             "required_status_checks": [{"context": name} for name in policy.required],
-            "strict_required_status_checks_policy": False,
+            "strict_required_status_checks_policy": current_strict,
         },
     }
 

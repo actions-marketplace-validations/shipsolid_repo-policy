@@ -101,3 +101,25 @@ def test_to_api_payload_raises_explicit_error_when_pull_requests_unresolved():
     unresolved = BranchPolicy(pull_requests=None)
     with pytest.raises(ValueError, match="pull_requests"):
         rulesets.to_api_payload("main", unresolved)
+
+
+def test_to_api_payload_preserves_current_strict_required_status_checks_policy():
+    resolved = BranchPolicy(
+        pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
+        status_checks=StatusChecksPolicy(required=["build"]),
+    )
+    current_raw = {
+        "id": 7,
+        "rules": [
+            {
+                "type": "required_status_checks",
+                "parameters": {
+                    "required_status_checks": [{"context": "build"}],
+                    "strict_required_status_checks_policy": True,
+                },
+            }
+        ],
+    }
+    payload = rulesets.to_api_payload("main", resolved, current_raw=current_raw)
+    sc_rule = next(r for r in payload["rules"] if r["type"] == "required_status_checks")
+    assert sc_rule["parameters"]["strict_required_status_checks_policy"] is True

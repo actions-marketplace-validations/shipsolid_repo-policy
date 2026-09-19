@@ -69,7 +69,7 @@ def apply_branch(
         if resolved.signed_commits != current.signed_commits:
             client.set_required_signatures(branch, bool(resolved.signed_commits))
     else:
-        payload = rulesets.to_api_payload(branch, resolved)
+        payload = rulesets.to_api_payload(branch, resolved, current_raw=raw)
         if ruleset_id is None:
             client.create_ruleset(payload)
         else:
