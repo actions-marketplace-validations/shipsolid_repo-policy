@@ -179,13 +179,13 @@ def test_repo_settings_allows_secret_scanning_push_protection_with_secret_scanni
 
 
 def test_field_specs_cover_every_diffable_field():
-    names = [spec.name for spec in FIELD_SPECS]
-    assert names == [
-        "pull_requests", "status_checks", "signed_commits", "linear_history",
-        "allow_force_push", "allow_deletion", "enforce_admins",
-        "required_conversation_resolution", "lock_branch", "allow_fork_syncing",
-        "clear_restrictions",
-    ]
+    """Cross-checked against BranchPolicy.model_fields itself (not a second hand-typed literal
+    list) so this actually catches a future BranchPolicy field added without a matching FieldSpec
+    entry -- exactly the regression class the field-spec-registry consolidation was meant to
+    prevent. `enforcement`/`strict` are BranchPolicy's only two non-diffable fields (mode
+    selectors, not policy content), so they're the only ones excluded."""
+    diffable_branch_policy_fields = set(BranchPolicy.model_fields) - {"enforcement", "strict"}
+    assert {spec.name for spec in FIELD_SPECS} == diffable_branch_policy_fields
 
 
 def test_field_specs_permissive_pull_requests_matches_constant():
