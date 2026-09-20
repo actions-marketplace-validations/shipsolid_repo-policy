@@ -1,11 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
+from repo_policy import models
 from repo_policy.models import (
     _RULESET_UNSUPPORTED_FIELDS,
     FIELD_SPECS,
     PERMISSIVE_PULL_REQUESTS,
     BranchPolicy,
+    FieldSpec,
     PolicyConfig,
     PullRequestPolicy,
     RepoSettingsPolicy,
@@ -221,3 +223,17 @@ def test_permissive_branch_policy_ruleset_defaults_signed_commits_false():
     policy = permissive_branch_policy("ruleset")
     assert policy.enforcement == "ruleset"
     assert policy.signed_commits is False
+
+
+def test_permissive_branch_policy_robust_to_a_future_field_spec_named_enforcement(monkeypatch):
+    """permissive_branch_policy() only excluded "signed_commits" from its FIELD_SPECS-derived
+    kwargs by name, before splatting the rest into BranchPolicy(...) alongside the explicit
+    enforcement=/signed_commits= keywords -- a future FieldSpec named "enforcement" (or "strict")
+    would collide with the explicit enforcement= keyword and raise
+    TypeError: got multiple values for keyword argument (reproduced directly against the old
+    implementation). Dict-key-overwrite construction (last write wins) can't hit that failure
+    mode regardless of what FIELD_SPECS contains, since it never passes the same name twice."""
+    colliding_specs = (*FIELD_SPECS, FieldSpec("enforcement", "branch_protection"))
+    monkeypatch.setattr(models, "FIELD_SPECS", colliding_specs)
+    policy = permissive_branch_policy("ruleset")
+    assert policy.enforcement == "ruleset"

@@ -138,12 +138,16 @@ def permissive_branch_policy(
     GitHubClient.get_required_signatures for branch_protection; hardcoded False for rulesets,
     since "no ruleset exists" already means no required_signatures rule), not a schema default, so
     it's a parameter rather than sourced from FIELD_SPECS. Built from FIELD_SPECS so it can't
-    drift from diff._SCHEMA_DEFAULTS / resolve_desired()'s own strict-mode defaults."""
-    return BranchPolicy(
-        enforcement=enforcement,
-        signed_commits=signed_commits,
-        **{spec.name: spec.default for spec in FIELD_SPECS if spec.name != "signed_commits"},
-    )
+    drift from diff._SCHEMA_DEFAULTS / resolve_desired()'s own strict-mode defaults. Uses
+    model_validate() over a plain dict (the same pattern diff.resolve_desired() uses to build a
+    BranchPolicy from a dynamically-assembled dict) rather than a filtered **splat alongside
+    explicit keywords, so a future FieldSpec named "enforcement" or "signed_commits" can't
+    collide with the explicit values below and raise TypeError: got multiple values for keyword
+    argument -- dict-key-overwrite means the explicit value always wins instead."""
+    fields: dict[str, Any] = {spec.name: spec.default for spec in FIELD_SPECS}
+    fields["enforcement"] = enforcement
+    fields["signed_commits"] = signed_commits
+    return BranchPolicy.model_validate(fields)
 
 
 class RepoSettingsPolicy(BaseModel):
