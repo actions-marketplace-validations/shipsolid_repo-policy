@@ -171,10 +171,12 @@ does not persist state outside the process it runs in.
 Two of the seven `repo_settings` fields can come back `unavailable` rather than `ok`/drifted:
 `secret_scanning`/`secret_scanning_push_protection` (422 = no GitHub Advanced Security license) and
 `private_vulnerability_reporting` (404 or 422 = repo not eligible, e.g. dependency graph disabled).
-`unavailable` is informational, not a compliance failure — it never sets `audit`/`plan`'s drift exit
-code, and `apply` reports it as a plain message rather than an error. `GitHubClient._request` gained
-an `allow_422` parameter (mirroring the existing `allow_404`) specifically to make this
-distinguishable from a genuine API error.
+`unavailable` is surfaced, not silently swallowed: `audit`/`plan` still set the drift exit code when
+a declared field comes back `unavailable` (even with no other drift), since a policy the operator
+declared isn't actually in effect — but `apply` reports it as a plain message rather than an error,
+since there's no API call left to retry or fail on. `GitHubClient._request` gained an `allow_422`
+parameter (mirroring the existing `allow_404`) specifically to make this distinguishable from a
+genuine API error.
 
 ## Failure Modes
 
