@@ -51,3 +51,21 @@ def test_load_policy_still_parses_true_false_as_booleans(tmp_path):
     config = load_policy(config_path)
     assert config.branches["main"].linear_history is True
     assert config.branches["main"].signed_commits is False
+
+
+def test_load_policy_does_not_interpret_leading_zero_as_octal(tmp_path):
+    """PyYAML's SafeLoader resolves a leading-zero scalar as legacy YAML 1.1 octal (confirmed:
+    yaml.safe_load("010") returns 8, not 10) -- a leading-zero approvals count (e.g. from
+    copy/paste alignment or a %02d-formatted generator) would silently weaken the declared policy
+    instead of erroring or matching what was typed."""
+    config_path = tmp_path / "policy.yml"
+    config_path.write_text("version: 1\nbranches:\n  main:\n    pull_requests:\n      approvals: 010\n")
+    config = load_policy(config_path)
+    assert config.branches["main"].pull_requests.approvals == 10
+
+
+def test_load_policy_still_parses_plain_decimal_ints(tmp_path):
+    config_path = tmp_path / "policy.yml"
+    config_path.write_text("version: 1\nbranches:\n  main:\n    pull_requests:\n      approvals: 3\n")
+    config = load_policy(config_path)
+    assert config.branches["main"].pull_requests.approvals == 3
