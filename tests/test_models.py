@@ -2,6 +2,9 @@ import pytest
 from pydantic import ValidationError
 
 from repo_policy.models import (
+    _RULESET_UNSUPPORTED_FIELDS,
+    FIELD_SPECS,
+    PERMISSIVE_PULL_REQUESTS,
     BranchPolicy,
     PolicyConfig,
     PullRequestPolicy,
@@ -172,3 +175,32 @@ def test_repo_settings_rejects_secret_scanning_push_protection_with_secret_scann
 def test_repo_settings_allows_secret_scanning_push_protection_with_secret_scanning_true():
     policy = RepoSettingsPolicy(secret_scanning_push_protection=True, secret_scanning=True)
     assert policy.secret_scanning_push_protection is True
+
+
+def test_field_specs_cover_every_diffable_field():
+    names = [spec.name for spec in FIELD_SPECS]
+    assert names == [
+        "pull_requests", "status_checks", "signed_commits", "linear_history",
+        "allow_force_push", "allow_deletion", "enforce_admins",
+        "required_conversation_resolution", "lock_branch", "allow_fork_syncing",
+        "clear_restrictions",
+    ]
+
+
+def test_field_specs_permissive_pull_requests_matches_constant():
+    spec = next(s for s in FIELD_SPECS if s.name == "pull_requests")
+    assert spec.default == PERMISSIVE_PULL_REQUESTS
+
+
+def test_ruleset_unsupported_fields_derived_from_field_specs():
+    expected = {spec.name: spec.default for spec in FIELD_SPECS if not spec.ruleset_supported}
+    assert _RULESET_UNSUPPORTED_FIELDS == expected
+    assert set(_RULESET_UNSUPPORTED_FIELDS) == {
+        "enforce_admins", "required_conversation_resolution", "lock_branch",
+        "allow_fork_syncing", "clear_restrictions",
+    }
+
+
+def test_field_specs_inverted_fields():
+    inverted = {spec.name for spec in FIELD_SPECS if spec.inverted}
+    assert inverted == {"allow_force_push", "allow_deletion", "clear_restrictions"}

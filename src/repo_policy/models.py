@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -33,15 +34,54 @@ class StatusChecksPolicy(BaseModel):
     required: list[str] = Field(default_factory=list)
 
 
-# field name -> its permissive (no-op) value under enforcement: ruleset. rulesets.from_api()
-# constructs internal "current state" BranchPolicy objects with these exact values for each field
-# below (never None) — the validator below must let that through unrejected, so it only rejects a
-# *non-permissive* (actually-restrictive) value, not merely a non-None one. A human writing
+PERMISSIVE_PULL_REQUESTS = PullRequestPolicy(required=False, approvals=0, code_owner_review=False)
+
+
+@dataclass(frozen=True)
+class FieldSpec:
+    """Describes one diffable BranchPolicy field: its permissive (no-op) default, whether its
+    boolean polarity is inverted (False/None means "a restriction exists" rather than "no rule" --
+    see diff._is_empty's docstring for why allow_force_push/allow_deletion/clear_restrictions are
+    inverted and allow_fork_syncing is not, despite superficially resembling them), whether GitHub
+    Rulesets can represent it at all, and its human-readable display label. Single source of truth
+    for what used to be four independently hand-maintained tables (diff._FIELDS/_SCHEMA_DEFAULTS/
+    _INVERTED_FIELDS, this module's own _RULESET_UNSUPPORTED_FIELDS) plus render._LABELS and a
+    third hand-copy of the ruleset-unsupported set in tests/test_policies_parity.py -- exactly the
+    kind of divergence between hand-copies that let the dismiss_stale_reviews/strict clobber bug
+    ship undetected."""
+
+    name: str
+    default: Any
+    inverted: bool = False
+    ruleset_supported: bool = True
+    label: str = ""
+
+
+FIELD_SPECS: tuple[FieldSpec, ...] = (
+    FieldSpec("pull_requests", PERMISSIVE_PULL_REQUESTS, label="Pull request requirements"),
+    FieldSpec("status_checks", None, label="Required status checks"),
+    FieldSpec("signed_commits", False, label="Signed commits"),
+    FieldSpec("linear_history", False, label="Linear history"),
+    FieldSpec("allow_force_push", True, inverted=True, label="Force pushes"),
+    FieldSpec("allow_deletion", True, inverted=True, label="Branch deletion"),
+    FieldSpec("enforce_admins", False, ruleset_supported=False, label="Admin enforcement"),
+    FieldSpec("required_conversation_resolution", False, ruleset_supported=False,
+              label="Conversation resolution"),
+    FieldSpec("lock_branch", False, ruleset_supported=False, label="Branch lock"),
+    FieldSpec("allow_fork_syncing", False, ruleset_supported=False, label="Fork syncing"),
+    FieldSpec("clear_restrictions", True, inverted=True, ruleset_supported=False,
+              label="Push restrictions"),
+)
+
+# field name -> its permissive (no-op) value under enforcement: ruleset. Derived from FIELD_SPECS
+# (single source of truth) rather than hand-typed -- rulesets.from_api() constructs internal
+# "current state" BranchPolicy objects with these exact values for each field below (never None)
+# — the validator below must let that through unrejected, so it only rejects a *non-permissive*
+# (actually-restrictive) value, not merely a non-None one. A human writing
 # `enforce_admins: false` under `enforcement: ruleset` is a harmless no-op declaration and is
 # allowed; `enforce_admins: true` is a real restriction with no ruleset equivalent and is rejected.
 _RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
-    "enforce_admins": False, "required_conversation_resolution": False, "lock_branch": False,
-    "allow_fork_syncing": False, "clear_restrictions": True,
+    spec.name: spec.default for spec in FIELD_SPECS if not spec.ruleset_supported
 }
 
 
