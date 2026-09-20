@@ -1,12 +1,16 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from repo_policy.apply import (
+    PartialApplyError,
     apply_all,
     apply_branch,
     detect_stale_branch_protection,
     plan_branch,
     prune_rulesets,
 )
+from repo_policy.github_client import GitHubAPIError
 from repo_policy.models import BranchPolicy, PolicyConfig, PullRequestPolicy
 
 
@@ -78,6 +82,88 @@ def test_apply_branch_updates_existing_ruleset():
     assert client.update_ruleset.call_args.args[0] == 7
 
 
+def _canonical_ruleset_raw(*, rules: list[dict] | None = None, **overrides) -> dict:
+    raw = {
+        "id": 7,
+        "name": "repo-policy:main",
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+        "rules": rules if rules is not None else [],
+        "bypass_actors": [],
+    }
+    raw.update(overrides)
+    return raw
+
+
+def test_plan_branch_reports_ruleset_metadata_drift_even_when_rule_content_matches():
+    """A disabled ruleset whose rule content already matches policy.yml must not report zero
+    drift -- that's the exact false-compliance gap Task 1 closes."""
+    client = MagicMock()
+    raw = _canonical_ruleset_raw(rules=[{"type": "required_linear_history"}], enforcement="disabled")
+    client.find_ruleset_by_name.return_value = raw
+    config = _config(enforcement="ruleset", linear_history=True)
+    changes, _resolved = plan_branch(client, config, "main")
+    assert "ruleset_enforcement" in {c.field for c in changes}
+    client.get_rules_for_branch.assert_not_called()
+
+
+def test_apply_branch_updates_ruleset_for_metadata_only_drift():
+    """Field-level content already matches (no diff() changes), but the ruleset itself is
+    disabled -- metadata-only drift must still trigger update_ruleset(), not the `if not changes`
+    early return that a purely field-level diff would take."""
+    client = MagicMock()
+    raw = _canonical_ruleset_raw(rules=[{"type": "required_linear_history"}], enforcement="disabled")
+    client.find_ruleset_by_name.return_value = raw
+    config = _config(enforcement="ruleset", linear_history=True)
+    result = apply_branch(client, config, "main")
+    assert result.applied is True
+    client.update_ruleset.assert_called_once()
+    payload = client.update_ruleset.call_args.args[1]
+    assert payload["enforcement"] == "active"
+
+
+def test_plan_branch_reports_ruleset_effectiveness_drift_when_ruleset_contributes_no_active_rule():
+    """Metadata and rule content both look canonical, but GitHub's own effective-rules endpoint
+    says this ruleset isn't actually active on the branch (e.g. an org-level override) -- this is
+    the live cross-check `metadata_changes()` alone can't perform."""
+    client = MagicMock()
+    raw = _canonical_ruleset_raw(rules=[{"type": "required_linear_history"}])
+    client.find_ruleset_by_name.return_value = raw
+    client.get_rules_for_branch.return_value = [
+        {"type": "required_linear_history", "ruleset_id": 999, "ruleset_source_type": "Organization"}
+    ]
+    config = _config(enforcement="ruleset", linear_history=True)
+    changes, _resolved = plan_branch(client, config, "main")
+    assert "ruleset_effectiveness" in {c.field for c in changes}
+    client.get_rules_for_branch.assert_called_once_with("main")
+
+
+def test_plan_branch_reports_no_drift_when_ruleset_contributes_an_active_rule():
+    client = MagicMock()
+    raw = _canonical_ruleset_raw(rules=[{"type": "required_linear_history"}])
+    client.find_ruleset_by_name.return_value = raw
+    client.get_rules_for_branch.return_value = [
+        {"type": "required_linear_history", "ruleset_id": 7, "ruleset_source_type": "Repository"}
+    ]
+    config = _config(enforcement="ruleset", linear_history=True)
+    changes, _resolved = plan_branch(client, config, "main")
+    assert changes == []
+
+
+def test_plan_branch_skips_effectiveness_check_when_ruleset_has_no_configured_rules():
+    """A canonical but intentionally empty ruleset (nothing declared under policy.yml for this
+    branch) has nothing to contribute -- checking the effective-rules endpoint for it would always
+    report the same false "ineffective" drift regardless of how correctly it's scoped."""
+    client = MagicMock()
+    raw = _canonical_ruleset_raw(rules=[])
+    client.find_ruleset_by_name.return_value = raw
+    config = _config(enforcement="ruleset")
+    changes, _resolved = plan_branch(client, config, "main")
+    assert changes == []
+    client.get_rules_for_branch.assert_not_called()
+
+
 def test_apply_all_applies_every_declared_branch():
     client = MagicMock()
     client.get_branch_protection.return_value = None
@@ -85,8 +171,8 @@ def test_apply_all_applies_every_declared_branch():
     config = PolicyConfig(
         version=1, branches={"main": BranchPolicy(), "release": BranchPolicy(linear_history=True)}
     )
-    results = apply_all(client, config)
-    assert {r.branch for r in results} == {"main", "release"}
+    summary = apply_all(client, config)
+    assert {entry.resource for entry in summary.journal} == {"main", "release"}
 
 
 def test_prune_rulesets_deletes_only_orphaned_repo_policy_rulesets():
@@ -184,3 +270,158 @@ def test_apply_all_skips_ruleset_prefetch_when_no_branch_uses_it():
     config = _config()  # branch_protection (the default), not ruleset
     apply_all(client, config)
     client.list_rulesets.assert_not_called()
+
+
+def test_apply_twice_against_ineffective_ruleset_converges_to_zero_changes():
+    """Step 8 idempotency check: a ruleset that's disabled, excludes its own branch, and carries a
+    bypass actor is fully ineffective despite already having the right rule content -- the first
+    apply must correct all of that in a single update_ruleset call, and re-reading back exactly
+    what was written (plus a live effective-rules confirmation) must show zero further drift and
+    perform zero further mutations."""
+    ineffective_raw = {
+        "id": 7,
+        "name": "repo-policy:main",
+        "target": "branch",
+        "enforcement": "disabled",
+        "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": ["refs/heads/main"]}},
+        "rules": [{"type": "required_linear_history"}],
+        "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+    }
+    client = MagicMock()
+    client.find_ruleset_by_name.return_value = ineffective_raw
+    config = _config(enforcement="ruleset", linear_history=True)
+
+    first_result = apply_branch(client, config, "main")
+    assert first_result.applied is True
+    client.update_ruleset.assert_called_once()
+    ruleset_id, canonical_payload = client.update_ruleset.call_args.args
+    assert ruleset_id == 7
+    assert canonical_payload["enforcement"] == "active"
+    assert canonical_payload["conditions"] == {"ref_name": {"include": ["refs/heads/main"], "exclude": []}}
+    assert canonical_payload["bypass_actors"] == []
+
+    # Second pass: GitHub now reflects exactly what the first apply wrote, and its effective-rules
+    # endpoint confirms the ruleset is genuinely active on the branch.
+    client.reset_mock()
+    canonical_raw = {**ineffective_raw, **canonical_payload, "id": 7}
+    client.find_ruleset_by_name.return_value = canonical_raw
+    client.get_rules_for_branch.return_value = [
+        {"type": "required_linear_history", "ruleset_id": 7, "ruleset_source_type": "Repository"}
+    ]
+
+    second_result = apply_branch(client, config, "main")
+    assert second_result.applied is False
+    assert second_result.changes == []
+    client.update_ruleset.assert_not_called()
+    client.create_ruleset.assert_not_called()
+
+
+def test_apply_twice_against_effectiveness_only_drift_converges_to_zero_changes():
+    """Same shape as the metadata-drift idempotency check above, but for the drift
+    metadata_changes() can't catch on its own: the ruleset's metadata and rule content are already
+    fully canonical, yet GitHub's effective-rules endpoint initially shows it isn't contributing an
+    active rule on the branch (e.g. eventual-consistency lag right after a change, or a transient
+    evaluation-order quirk). There's no metadata field left to correct in that case, so the first
+    apply's "repair" is a best-effort re-PUT of the same already-canonical payload; once GitHub's
+    effective-rules view catches up, a second apply must converge to zero changes and perform zero
+    further mutations."""
+    canonical_raw = {
+        "id": 7,
+        "name": "repo-policy:main",
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+        "rules": [{"type": "required_linear_history"}],
+        "bypass_actors": [],
+    }
+    client = MagicMock()
+    client.find_ruleset_by_name.return_value = canonical_raw
+    # Metadata and rule content are already canonical -- only the effective-rules endpoint shows a
+    # problem: some other ruleset (999), not this one (7), is what's actually active here.
+    client.get_rules_for_branch.return_value = [
+        {"type": "required_linear_history", "ruleset_id": 999, "ruleset_source_type": "Organization"}
+    ]
+    config = _config(enforcement="ruleset", linear_history=True)
+
+    first_result = apply_branch(client, config, "main")
+    assert first_result.applied is True
+    assert [c.field for c in first_result.changes] == ["ruleset_effectiveness"]
+    client.update_ruleset.assert_called_once()
+    ruleset_id, payload = client.update_ruleset.call_args.args
+    assert ruleset_id == 7
+    assert payload["enforcement"] == "active"
+    assert payload["conditions"] == {"ref_name": {"include": ["refs/heads/main"], "exclude": []}}
+
+    # Second pass: GitHub's effective-rules endpoint now confirms ruleset 7 is genuinely active.
+    client.reset_mock()
+    client.find_ruleset_by_name.return_value = canonical_raw
+    client.get_rules_for_branch.return_value = [
+        {"type": "required_linear_history", "ruleset_id": 7, "ruleset_source_type": "Repository"}
+    ]
+
+    second_result = apply_branch(client, config, "main")
+    assert second_result.applied is False
+    assert second_result.changes == []
+    client.update_ruleset.assert_not_called()
+    client.create_ruleset.assert_not_called()
+
+
+def test_apply_all_preflight_performs_no_mutation_when_a_later_branch_fails_to_plan():
+    """Task 3: preflight must finish reading/resolving/diffing every declared branch before any
+    branch is mutated -- a planning failure on "release" (the second declared branch) must leave
+    "main" (the first) planned but never written to, even though "main" itself has drift and would
+    otherwise be mutated first in declaration order."""
+    client = MagicMock()
+    client.get_branch_protection.return_value = None
+    client.get_required_signatures.return_value = False
+
+    def _find_ruleset_by_name(name, rulesets=None):
+        if name == "repo-policy:release":
+            raise GitHubAPIError("boom", status_code=500)
+
+    client.find_ruleset_by_name.side_effect = _find_ruleset_by_name
+    config = PolicyConfig(
+        version=1,
+        branches={
+            "main": BranchPolicy(linear_history=True),
+            "release": BranchPolicy(enforcement="ruleset", linear_history=True),
+        },
+    )
+
+    with pytest.raises(GitHubAPIError):
+        apply_all(client, config)
+
+    client.put_branch_protection.assert_not_called()
+    client.create_ruleset.assert_not_called()
+    client.update_ruleset.assert_not_called()
+
+
+def test_apply_all_raises_partial_apply_error_identifying_prior_success_on_mutation_failure():
+    """Task 3: when "release"'s mutation fails after "main"'s already succeeded, apply_all must
+    not lose "main"'s success to the uncaught exception -- it raises PartialApplyError carrying an
+    ApplySummary whose journal already has "main" recorded as applied, plus "release" recorded as
+    failed."""
+    client = MagicMock()
+    client.get_branch_protection.return_value = None
+    client.get_required_signatures.return_value = False
+
+    def _put_branch_protection(branch, payload):
+        if branch == "release":
+            raise GitHubAPIError("boom", status_code=500)
+        return {}
+
+    client.put_branch_protection.side_effect = _put_branch_protection
+    config = PolicyConfig(
+        version=1,
+        branches={
+            "main": BranchPolicy(linear_history=True),
+            "release": BranchPolicy(linear_history=True),
+        },
+    )
+
+    with pytest.raises(PartialApplyError) as exc_info:
+        apply_all(client, config)
+
+    statuses = {entry.resource: entry.status for entry in exc_info.value.summary.journal}
+    assert statuses["main"] == "applied"
+    assert statuses["release"] == "failed"

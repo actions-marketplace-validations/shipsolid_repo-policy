@@ -6,14 +6,20 @@ import sys
 
 import click
 
-from repo_policy.apply import apply_all, prefetch_rulesets, prune_rulesets
-from repo_policy.audit import audit_all
+from repo_policy.apply import (
+    PartialApplyError,
+    apply_all,
+    detect_stale_branch_protection,
+    prefetch_rulesets,
+    prune_rulesets,
+)
+from repo_policy.audit import AuditResult, audit_all
 from repo_policy.config import ConfigError, load_policy
 from repo_policy.diff import PolicyResolutionError
 from repo_policy.github_client import GitHubAPIError, GitHubClient
 from repo_policy.models import PolicyConfig
-from repo_policy.render import render_plan, render_repo_settings
-from repo_policy.repo_settings import apply_repo_settings, plan_repo_settings
+from repo_policy.render import render_apply_journal, render_plan, render_repo_settings
+from repo_policy.repo_settings import RepoSettingsResult, apply_repo_settings, plan_repo_settings
 
 EXIT_OK = 0
 EXIT_DRIFT = 1
@@ -76,13 +82,37 @@ def _build_client(
 ) -> tuple[PolicyConfig, str, GitHubClient]:
     """Shared setup for _run_check (audit/plan) and apply: load the policy, resolve the target
     repository, and construct the GitHub client. ConfigError (from load_policy) and
-    click.ClickException (from _resolve_repo/_split_repo/_resolve_token) both propagate uncaught
-    -- each caller keeps its own ConfigError exit-code handling, while ClickException is already
-    handled automatically by click's own command dispatch."""
+    click.ClickException (from _resolve_repo/_split_repo/_resolve_token, and now also from a
+    failed GitHubClient(...) construction below) all propagate uncaught -- each caller keeps its
+    own ConfigError exit-code handling, while click.ClickException is already handled
+    automatically by click's own command dispatch: Command.main() wraps the entire
+    self.invoke(ctx) call (the whole group -> subcommand dispatch chain) in a single
+    `except ClickException` that calls e.show() and sys.exit(e.exit_code), regardless of how deep
+    in the call stack the exception was raised -- so neither _run_check nor apply needs its own
+    except block for it.
+
+    A GitHubClient(...) construction failure (e.g. ImportError: 'socksio' is not installed, when
+    a SOCKS-scheme proxy env var like ALL_PROXY=socks5h://... is set but the httpx[socks] extra
+    is missing) previously propagated as a raw, uncaught exception -- surfacing as a Python
+    traceback with Python's own default exit code, which could collide with this CLI's
+    EXIT_DRIFT (1) and make it impossible for a CI pipeline branching on exit code to tell
+    "proxy/setup is broken" apart from "there's real policy drift". It's a setup problem, not
+    drift and not an attempted-and-failed API call, so it's wrapped into the same
+    _ConfigClickException (exit 2) as every other config/setup failure above."""
     config = load_policy(config_path)
     resolved_repo = _resolve_repo(repo)
     owner, name = _split_repo(resolved_repo)
-    client = GitHubClient(token=_resolve_token(token), owner=owner, repo=name)
+    token_value = _resolve_token(token)
+    try:
+        client = GitHubClient(token=token_value, owner=owner, repo=name)
+    except Exception as exc:
+        raise _config_error(
+            f"could not initialize GitHub client: {exc}; this is usually a proxy "
+            "misconfiguration -- check HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY, and if you're "
+            "using a SOCKS proxy (socks5/socks5h/socks4 scheme), confirm SOCKS support is "
+            "installed (this package depends on httpx[socks]; reinstall repo-policy if it's "
+            "missing)"
+        ) from exc
     return config, resolved_repo, client
 
 
@@ -103,6 +133,65 @@ def validate(config_path: str) -> None:
     sys.exit(EXIT_OK)
 
 
+def _compute_drift(
+    results: list[AuditResult], orphaned_rulesets: list[str], repo_settings_result: RepoSettingsResult
+) -> bool:
+    """The one drift definition shared by _run_check (audit/plan) and verify_after_apply (apply's
+    post-mutation convergence check): any branch's own noncompliance (declared-field drift,
+    ruleset-ownership metadata, live-effectiveness cross-check, or stale classic branch
+    protection -- see AuditResult.compliant), any orphaned ruleset a strict apply would still
+    need to prune, or repo-settings drift/unavailability. Kept in exactly one place so apply's
+    post-mutation compliance bar can never silently diverge from what audit/plan already treat as
+    drift."""
+    return (
+        any(not result.compliant for result in results)
+        or bool(orphaned_rulesets)
+        or not repo_settings_result.compliant
+    )
+
+
+def _render_findings(
+    resolved_repo: str,
+    results: list[AuditResult],
+    orphaned_rulesets: list[str],
+    repo_settings_result: RepoSettingsResult,
+    *,
+    render: bool,
+) -> None:
+    """Prints exactly what _run_check (audit/plan) has always printed for a given
+    results/orphaned_rulesets/repo_settings_result triple -- factored out so apply's post-mutation
+    convergence-failure report can show the same per-resource detail (Task 4) instead of a second,
+    drifting copy of these message strings."""
+    for result in results:
+        if render:
+            click.echo(render_plan(resolved_repo, result.branch, result.changes))
+        elif result.changes:
+            click.echo(f"{result.branch}: {len(result.changes)} change(s) required")
+        if result.stale_branch_protection:
+            click.echo(
+                f"{result.branch}: stale classic branch protection detected -- this branch is "
+                "declared under enforcement: ruleset but GitHub still has a classic "
+                "branch-protection object for it, most likely left over from a prior "
+                "enforcement: branch_protection policy; repo-policy cannot safely remove it "
+                "automatically (no ownership marker), remove it manually if it's no longer wanted"
+            )
+
+    for ruleset_name in orphaned_rulesets:
+        click.echo(
+            f"orphaned ruleset {ruleset_name} detected -- its branch is no longer declared "
+            "under enforcement: ruleset; the next apply (strict mode) will remove it"
+        )
+
+    if not repo_settings_result.compliant:
+        if render:
+            click.echo(render_repo_settings(resolved_repo, repo_settings_result))
+        else:
+            if repo_settings_result.changes:
+                click.echo(f"repo settings: {len(repo_settings_result.changes)} change(s) required")
+            for field_name in repo_settings_result.unavailable:
+                click.echo(f"repo settings: {field_name} unavailable on this repository")
+
+
 def _run_check(config_path: str, repo: str | None, token: str | None, *, render: bool) -> int:
     try:
         config, resolved_repo, client = _build_client(config_path, repo, token)
@@ -121,42 +210,30 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
         click.echo(str(exc), err=True)
         return EXIT_CONFIG_ERROR
 
-    any_drift = False
-    for result in results:
-        if render:
-            click.echo(render_plan(resolved_repo, result.branch, result.changes))
-        elif result.changes:
-            click.echo(f"{result.branch}: {len(result.changes)} change(s) required")
-        if result.stale_branch_protection:
-            click.echo(
-                f"{result.branch}: stale classic branch protection detected -- this branch is "
-                "declared under enforcement: ruleset but GitHub still has a classic "
-                "branch-protection object for it, most likely left over from a prior "
-                "enforcement: branch_protection policy; repo-policy cannot safely remove it "
-                "automatically (no ownership marker), remove it manually if it's no longer wanted"
-            )
-        any_drift = any_drift or not result.compliant
+    _render_findings(resolved_repo, results, orphaned_rulesets, repo_settings_result, render=render)
 
-    for ruleset_name in orphaned_rulesets:
-        click.echo(
-            f"orphaned ruleset {ruleset_name} detected -- its branch is no longer declared "
-            "under enforcement: ruleset; the next apply (strict mode) will remove it"
-        )
-    any_drift = any_drift or bool(orphaned_rulesets)
-
-    if repo_settings_result.changes or repo_settings_result.unavailable:
-        if render:
-            click.echo(render_repo_settings(resolved_repo, repo_settings_result))
-        else:
-            if repo_settings_result.changes:
-                click.echo(f"repo settings: {len(repo_settings_result.changes)} change(s) required")
-            for field_name in repo_settings_result.unavailable:
-                click.echo(f"repo settings: {field_name} unavailable on this repository")
-        any_drift = True
-
+    any_drift = _compute_drift(results, orphaned_rulesets, repo_settings_result)
     if not any_drift and not render:
         click.echo(f"{resolved_repo} is compliant.")
     return EXIT_DRIFT if any_drift else EXIT_OK
+
+
+def verify_after_apply(
+    client: GitHubClient, config: PolicyConfig
+) -> tuple[list[AuditResult], list[str], RepoSettingsResult]:
+    """Independent, fully-fresh re-check of live GitHub state, run after apply's mutation phase
+    completes without raising -- the mechanism that closes both gaps Task 4 targets: a 2xx
+    response is never trusted as proof a policy took effect, and a declared repo setting that
+    comes back `unavailable` is never silently treated as satisfied. Deliberately reuses the exact
+    same read-only engine audit/plan already run (audit_all + plan_repo_settings) rather than
+    reading back apply's own mutation-response journal (apply.ApplySummary.verification_drift/
+    .unavailable) -- a genuine independent re-fetch is a stronger correctness guarantee than
+    trusting a summary derived from the mutation calls' own responses. audit_all takes no
+    rulesets_cache here on purpose: rulesets may have just been created, updated, or pruned by the
+    apply that preceded this call, so a cached pre-mutation list would be stale."""
+    results, orphaned_rulesets = audit_all(client, config)
+    repo_settings_result = plan_repo_settings(client, config)
+    return results, orphaned_rulesets, repo_settings_result
 
 
 @main.command()
@@ -181,7 +258,7 @@ def plan(config_path: str, repo: str | None, token: str | None) -> None:
 @click.option("--token", default=None)
 def apply(config_path: str, repo: str | None, token: str | None) -> None:
     try:
-        config, _resolved_repo, client = _build_client(config_path, repo, token)
+        config, resolved_repo, client = _build_client(config_path, repo, token)
     except ConfigError as exc:
         click.echo(str(exc), err=True)
         sys.exit(EXIT_CONFIG_ERROR)
@@ -189,29 +266,53 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
     try:
         with client as client:
             rulesets_cache = prefetch_rulesets(client, config, force=config.strict)
-            results = apply_all(client, config, rulesets_cache=rulesets_cache)
+            stale_branches = set(detect_stale_branch_protection(client, config))
+
+            try:
+                branch_summary = apply_all(client, config, rulesets_cache=rulesets_cache)
+            except PartialApplyError as exc:
+                # Render whatever mutations already succeeded before this one failed -- the whole
+                # point of this task -- then surface the underlying API error and exit 3, same as
+                # an outright GitHubAPIError below.
+                for line in render_apply_journal(exc.summary.journal):
+                    click.echo(line)
+                click.echo(str(exc.cause), err=True)
+                sys.exit(EXIT_API_ERROR)
+
+            for line in render_apply_journal(branch_summary.journal):
+                click.echo(line)
+            for branch in config.branches:
+                if branch in stale_branches:
+                    click.echo(
+                        f"{branch}: classic branch protection still exists on GitHub for this "
+                        "ruleset-enforced branch -- remove it manually, repo-policy will not delete it "
+                        "automatically"
+                    )
+
             if config.strict:
                 for deleted_name in prune_rulesets(client, config, rulesets_cache=rulesets_cache):
                     click.echo(f"- removed orphaned ruleset {deleted_name}")
-            repo_settings_result = apply_repo_settings(client, config)
+
+            try:
+                repo_settings_result = apply_repo_settings(client, config)
+            except PartialApplyError as exc:
+                for line in render_apply_journal(exc.summary.journal):
+                    click.echo(line)
+                click.echo(str(exc.cause), err=True)
+                sys.exit(EXIT_API_ERROR)
+
+            # Task 4: mutations above raised nothing, but a 2xx response is never proof by itself
+            # that the policy actually took effect -- re-check live state from scratch (still
+            # inside the client's open context) before deciding this apply succeeded.
+            verify_results, verify_orphaned_rulesets, verify_repo_settings = verify_after_apply(
+                client, config
+            )
     except GitHubAPIError as exc:
         click.echo(str(exc), err=True)
         sys.exit(EXIT_API_ERROR)
     except PolicyResolutionError as exc:
         click.echo(str(exc), err=True)
         sys.exit(EXIT_CONFIG_ERROR)
-
-    for result in results:
-        if result.applied:
-            click.echo(f"{result.branch}: applied {len(result.changes)} change(s)")
-        else:
-            click.echo(f"{result.branch}: no changes needed")
-        if result.stale_branch_protection:
-            click.echo(
-                f"{result.branch}: classic branch protection still exists on GitHub for this "
-                "ruleset-enforced branch -- remove it manually, repo-policy will not delete it "
-                "automatically"
-            )
 
     if repo_settings_result.applied:
         applied_count = sum(
@@ -220,5 +321,12 @@ def apply(config_path: str, repo: str | None, token: str | None) -> None:
         click.echo(f"repo settings: applied {applied_count} change(s)")
     for field_name in repo_settings_result.unavailable:
         click.echo(f"repo settings: {field_name} unavailable on this repository")
+
+    if _compute_drift(verify_results, verify_orphaned_rulesets, verify_repo_settings):
+        _render_findings(
+            resolved_repo, verify_results, verify_orphaned_rulesets, verify_repo_settings, render=True
+        )
+        click.echo("apply completed but policy is not converged")
+        sys.exit(EXIT_DRIFT)
 
     sys.exit(EXIT_OK)

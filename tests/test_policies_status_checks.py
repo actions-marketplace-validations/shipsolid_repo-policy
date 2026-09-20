@@ -9,7 +9,7 @@ def test_to_branch_protection_none_when_empty():
 
 def test_to_branch_protection_builds_payload():
     payload = status_checks.to_branch_protection(StatusChecksPolicy(required=["build", "test"]))
-    assert payload["contexts"] == ["build", "test"]
+    assert "contexts" not in payload
     assert payload["checks"] == [
         {"context": "build", "app_id": None},
         {"context": "test", "app_id": None},
@@ -146,5 +146,25 @@ def test_from_ruleset_rule_none_when_absent():
 
 def test_from_ruleset_rule_reads_rule():
     rule = {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "build"}]}}
+    result = status_checks.from_ruleset_rule(rule)
+    assert result == StatusChecksPolicy(required=["build"])
+
+
+def test_from_ruleset_rule_dedupes_checks_sharing_a_context_name():
+    """The ruleset-schema counterpart of test_from_branch_protection_dedupes_checks_sharing_a_
+    context_name above: GitHub's required_status_checks parameters array can contain two entries
+    with the same context but different integration_id (e.g. mid-migration between CI apps).
+    StatusChecksPolicy.required now rejects duplicate entries outright (models.py), so reading a
+    GitHub ruleset actually in this transient state back into a BranchPolicy must not itself
+    raise -- required must not end up with that context listed twice."""
+    rule = {
+        "type": "required_status_checks",
+        "parameters": {
+            "required_status_checks": [
+                {"context": "build", "integration_id": 1},
+                {"context": "build", "integration_id": 2},
+            ]
+        },
+    }
     result = status_checks.from_ruleset_rule(rule)
     assert result == StatusChecksPolicy(required=["build"])

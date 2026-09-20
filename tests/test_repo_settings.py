@@ -1,7 +1,32 @@
 from unittest.mock import MagicMock
 
+import pytest
+
+from repo_policy.apply import PartialApplyError
+from repo_policy.github_client import GitHubAPIError
 from repo_policy.models import PolicyConfig, RepoSettingsPolicy
-from repo_policy.repo_settings import apply_repo_settings, plan_repo_settings
+from repo_policy.policies.repo_settings import RepoSettingChange
+from repo_policy.repo_settings import RepoSettingsResult, apply_repo_settings, plan_repo_settings
+
+
+def test_repo_settings_result_compliant_when_no_changes_and_nothing_unavailable():
+    assert RepoSettingsResult().compliant is True
+
+
+def test_repo_settings_result_not_compliant_when_changes_exist():
+    result = RepoSettingsResult(
+        changes=[RepoSettingChange(field="delete_branch_on_merge", current_value=False, desired_value=True, action="modify")]
+    )
+    assert result.compliant is False
+
+
+def test_repo_settings_result_not_compliant_when_field_unavailable_even_with_no_changes():
+    """Task 4: a declared field GitHub reports structurally ineligible must never read as
+    compliant just because there's no pending Change to apply -- see
+    test_plan_repo_settings_records_unavailable_when_pvr_ineligible, which records exactly this
+    shape (unavailable non-empty, changes empty)."""
+    result = RepoSettingsResult(unavailable=["private_vulnerability_reporting"])
+    assert result.compliant is False
 
 
 def test_plan_repo_settings_returns_empty_result_when_section_absent():
@@ -187,3 +212,27 @@ def test_apply_repo_settings_enables_alerts_before_security_fixes():
     )
     apply_repo_settings(client, config)
     assert call_order == ["vulnerability_alerts", "automated_security_fixes"]
+
+
+def test_apply_repo_settings_raises_partial_apply_error_identifying_completed_and_failed_operations():
+    """Task 3: vulnerability_alerts succeeds, then automated_security_fixes raises -- the journal
+    carried by the raised PartialApplyError must show the first operation as applied and the
+    second as failed, so the CLI can report exactly which repo-setting operations completed before
+    the failure."""
+    client = MagicMock()
+    client.get_repo.return_value = {}
+    client.get_vulnerability_alerts.return_value = False
+    client.get_automated_security_fixes.return_value = False
+    client.enable_automated_security_fixes.side_effect = GitHubAPIError("boom", status_code=500)
+    config = PolicyConfig(
+        version=1, branches={},
+        repo_settings=RepoSettingsPolicy(vulnerability_alerts=True, automated_security_fixes=True),
+    )
+
+    with pytest.raises(PartialApplyError) as exc_info:
+        apply_repo_settings(client, config)
+
+    client.enable_vulnerability_alerts.assert_called_once()
+    statuses = {entry.resource: entry.status for entry in exc_info.value.summary.journal}
+    assert statuses["repo settings: vulnerability_alerts"] == "applied"
+    assert statuses["repo settings: automated_security_fixes"] == "failed"
