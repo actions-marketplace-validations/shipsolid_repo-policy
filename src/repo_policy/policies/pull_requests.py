@@ -48,9 +48,16 @@ def from_branch_protection(data: dict | None) -> PullRequestPolicy:
     )
 
 
-def to_ruleset_rule(policy: PullRequestPolicy) -> dict | None:
+def to_ruleset_rule(policy: PullRequestPolicy, current: dict | None = None) -> dict | None:
+    """`current` is the existing rules-array entry of type "pull_request" (or None on first
+    creation). required_review_thread_resolution has no modeled field -- distinct from
+    required_conversation_resolution, which IS rejected outright for enforcement: ruleset by
+    BranchPolicy's model validator (models.py) -- so it's read through from current state rather
+    than reset to False on every apply, the same pattern as status_checks.to_ruleset_rule's
+    strict_required_status_checks_policy."""
     if not policy.required:
         return None
+    current_params = current.get("parameters", {}) if current is not None else {}
     return {
         "type": "pull_request",
         "parameters": {
@@ -58,10 +65,9 @@ def to_ruleset_rule(policy: PullRequestPolicy) -> dict | None:
             "require_code_owner_review": policy.code_owner_review,
             "require_last_push_approval": policy.require_last_push_approval,
             "dismiss_stale_reviews_on_push": policy.dismiss_stale_reviews,
-            # required_conversation_resolution has no independent ruleset representation and is
-            # rejected for enforcement: ruleset by BranchPolicy's model validator (models.py) —
-            # always False here, not a placeholder. See this plan's Architecture section.
-            "required_review_thread_resolution": False,
+            "required_review_thread_resolution": current_params.get(
+                "required_review_thread_resolution", False
+            ),
         },
     }
 

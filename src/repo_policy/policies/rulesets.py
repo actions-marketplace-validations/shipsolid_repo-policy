@@ -67,7 +67,9 @@ def to_api_payload(branch: str, resolved: BranchPolicy, current_raw: dict | None
         rule for rule in current_raw.get("rules", []) if rule["type"] not in _MANAGED_RULE_TYPES
     ]
 
-    pr_rule = pull_requests.to_ruleset_rule(resolved.pull_requests)
+    pr_rule = pull_requests.to_ruleset_rule(
+        resolved.pull_requests, current=current_rules_by_type.get("pull_request")
+    )
     if pr_rule is not None:
         rules.append(pr_rule)
 

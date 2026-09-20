@@ -94,6 +94,29 @@ def test_to_ruleset_rule_builds_rule():
     assert rule["parameters"]["required_approving_review_count"] == 1
 
 
+def test_to_ruleset_rule_defaults_review_thread_resolution_false_when_no_current_state():
+    policy = PullRequestPolicy(required=True, approvals=1, code_owner_review=False)
+    rule = pull_requests.to_ruleset_rule(policy, current=None)
+    assert rule["parameters"]["required_review_thread_resolution"] is False
+
+
+def test_to_ruleset_rule_preserves_review_thread_resolution_from_current_state():
+    """required_review_thread_resolution has no modeled field (distinct from
+    required_conversation_resolution, which is rejected outright for enforcement: ruleset) -- a
+    human-set value on the live pull_request rule must survive a rules-array rebuild triggered by
+    an unrelated declared field changing, not be reset to False on every apply."""
+    policy = PullRequestPolicy(required=True, approvals=1, code_owner_review=False)
+    current_rule = {
+        "type": "pull_request",
+        "parameters": {
+            "required_approving_review_count": 1,
+            "required_review_thread_resolution": True,
+        },
+    }
+    rule = pull_requests.to_ruleset_rule(policy, current=current_rule)
+    assert rule["parameters"]["required_review_thread_resolution"] is True
+
+
 def test_from_ruleset_rule_none_means_not_required():
     result = pull_requests.from_ruleset_rule(None)
     assert result.required is False
