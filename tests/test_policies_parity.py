@@ -10,7 +10,7 @@ addition that's wired into only one translator fails loudly here instead of ship
 import pytest
 
 from repo_policy.diff import _FIELDS
-from repo_policy.models import BranchPolicy, PullRequestPolicy, StatusChecksPolicy
+from repo_policy.models import FIELD_SPECS, BranchPolicy, PullRequestPolicy, StatusChecksPolicy
 from repo_policy.policies import branch_protection, rulesets
 
 PERMISSIVE = BranchPolicy(
@@ -59,14 +59,13 @@ RESTRICTIVE_VALUES = {
 # non-empty current_raw so the distinction is actually observable.
 BRANCH_PROTECTION_FIELDS = [f for f in _FIELDS if f not in ("signed_commits", "clear_restrictions")]
 
-# enforce_admins/required_conversation_resolution/lock_branch/allow_fork_syncing have no GitHub
-# Rulesets equivalent -- BranchPolicy's model validator (models.py) rejects setting them under
-# enforcement: ruleset, so the ruleset backend never needs to represent them (see rulesets.from_api,
-# which hardcodes each to its permissive constant instead of reading it).
-RULESET_UNSUPPORTED_FIELDS = {
-    "enforce_admins", "required_conversation_resolution", "lock_branch", "allow_fork_syncing",
-    "clear_restrictions",
-}
+# enforce_admins/required_conversation_resolution/lock_branch/allow_fork_syncing/
+# clear_restrictions have no GitHub Rulesets equivalent -- BranchPolicy's model validator
+# (models.py) rejects setting them under enforcement: ruleset, so the ruleset backend never needs
+# to represent them (see rulesets.from_api, which hardcodes each to its permissive constant
+# instead of reading it). Sourced from models.FIELD_SPECS rather than hand-copied a third time, so
+# this can't silently drift from models._RULESET_UNSUPPORTED_FIELDS.
+RULESET_UNSUPPORTED_FIELDS = {spec.name for spec in FIELD_SPECS if not spec.ruleset_supported}
 RULESET_FIELDS = [f for f in _FIELDS if f not in RULESET_UNSUPPORTED_FIELDS]
 
 
