@@ -57,6 +57,16 @@ def test_from_branch_protection_reads_contexts():
     assert result == StatusChecksPolicy(required=["build"])
 
 
+def test_from_branch_protection_dedupes_checks_sharing_a_context_name():
+    """GitHub's checks array can contain two entries with the same context but different app_id
+    (e.g. mid-migration between CI apps) -- required must not end up with that context listed
+    twice, which would re-serialize as two duplicate {"context": X, "app_id": ...} entries and
+    lose the distinct app-scoping entirely rather than modeling it faithfully."""
+    data = {"checks": [{"context": "build", "app_id": 1}, {"context": "build", "app_id": 2}]}
+    result = status_checks.from_branch_protection(data)
+    assert result == StatusChecksPolicy(required=["build"])
+
+
 def test_to_ruleset_rule_none_when_empty():
     assert status_checks.to_ruleset_rule(StatusChecksPolicy(required=[])) is None
 

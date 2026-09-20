@@ -29,7 +29,10 @@ def from_branch_protection(data: dict | None) -> StatusChecksPolicy | None:
     contexts = data.get("contexts") or [check["context"] for check in data.get("checks", [])]
     if not contexts:
         return None
-    return StatusChecksPolicy(required=list(contexts))
+    # dict.fromkeys dedupes while preserving first-occurrence order -- the checks array can
+    # contain two entries sharing a context but different app_id (e.g. mid-migration between CI
+    # apps); without this, required ends up with that context listed twice.
+    return StatusChecksPolicy(required=list(dict.fromkeys(contexts)))
 
 
 def to_ruleset_rule(policy: StatusChecksPolicy | None, current: dict | None = None) -> dict | None:
