@@ -86,6 +86,12 @@ _RULESET_UNSUPPORTED_FIELDS: dict[str, bool] = {
 
 
 class BranchPolicy(BaseModel):
+    """Frozen for the same reason as PullRequestPolicy/StatusChecksPolicy: a point-in-time policy
+    snapshot (declared, current, or resolved) that's never mutated in place anywhere in this
+    codebase -- frozen makes that a guarantee instead of an unenforced convention."""
+
+    model_config = ConfigDict(frozen=True)
+
     enforcement: Literal["branch_protection", "ruleset"] = "branch_protection"
     strict: bool | None = None
     pull_requests: PullRequestPolicy | None = None
@@ -151,6 +157,10 @@ def permissive_branch_policy(
 
 
 class RepoSettingsPolicy(BaseModel):
+    """Frozen for the same "never mutated in place" reason as BranchPolicy."""
+
+    model_config = ConfigDict(frozen=True)
+
     delete_branch_on_merge: bool | None = None
     allow_update_branch: bool | None = None
     vulnerability_alerts: bool | None = None
@@ -181,6 +191,12 @@ class RepoSettingsPolicy(BaseModel):
 
 
 class PolicyConfig(BaseModel):
+    """Frozen for the same "never mutated in place" reason as BranchPolicy -- unhashable
+    regardless (its `branches` dict field is never hashable), the same documented limitation as
+    StatusChecksPolicy."""
+
+    model_config = ConfigDict(frozen=True)
+
     version: int
     strict: bool = False
     branches: dict[str, BranchPolicy]

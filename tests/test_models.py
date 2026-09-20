@@ -24,6 +24,30 @@ def test_branch_policy_defaults():
     assert policy.pull_requests is None
 
 
+def test_branch_policy_is_frozen():
+    """BranchPolicy is a point-in-time snapshot (declared, current, or resolved) that's never
+    mutated in place anywhere in this codebase -- same invariant PullRequestPolicy/
+    StatusChecksPolicy already document and enforce. frozen=True makes it a guarantee instead of
+    an unenforced convention: an accidental `resolved.enforce_admins = True` instead of
+    model_copy(update=...) would otherwise mutate in place and silently propagate through any
+    aliased reference, invisibly."""
+    policy = BranchPolicy()
+    with pytest.raises(ValidationError):
+        policy.enforce_admins = True
+
+
+def test_repo_settings_policy_is_frozen():
+    policy = RepoSettingsPolicy()
+    with pytest.raises(ValidationError):
+        policy.delete_branch_on_merge = True
+
+
+def test_policy_config_is_frozen():
+    config = PolicyConfig(version=1, branches={})
+    with pytest.raises(ValidationError):
+        config.strict = True
+
+
 def test_branch_policy_rejects_unknown_enforcement():
     with pytest.raises(ValidationError):
         BranchPolicy(enforcement="bogus")
