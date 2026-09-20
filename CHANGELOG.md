@@ -1,6 +1,231 @@
 # CHANGELOG
 
 
+## v0.4.7 (2026-09-20)
+
+### Bug Fixes
+
+- Audit/plan warn about orphaned rulesets before strict apply prunes them
+  ([`add393a`](https://github.com/shipsolid/repo-policy/commit/add393a7272a90f3f1013c25e9d257d65fbb7520))
+
+audit_all() only checked declared branches and stale classic branch protection -- it never scanned
+  for orphaned repo-policy:* rulesets, so a clean audit/plan could report full compliance right up
+  until the next strict apply's prune_rulesets silently deleted one. Extracted the orphan-finding
+  logic prune_rulesets already had into a shared apply.find_orphaned_ruleset_names(), added
+  audit.detect_orphaned_rulesets() (gated on config.strict the same way prune_rulesets itself is
+  invoked), and folded it into audit_all()'s result. audit_all() now returns (results,
+  orphaned_rulesets) instead of just results -- all five existing call sites/tests updated
+  accordingly. cli.py's audit/plan now warn about each orphan and count it toward the drift exit
+  code.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Dedupe duplicate check contexts when reading required_status_checks
+  ([`a41fded`](https://github.com/shipsolid/repo-policy/commit/a41fdeddb2191732a63250d62306b2089fa8a67a))
+
+from_branch_protection's checks-array fallback never deduplicated context names, so two entries
+  sharing a context but different app_id (e.g. mid-migration between CI apps) collapsed into a
+  duplicated required list -- re-serialized, that produced two identical {"context": X, "app_id":
+  None} entries and lost the distinct app-scoping entirely. dict.fromkeys() dedupes while preserving
+  first-occurrence order.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Handle explicit null users/teams/apps key in _actor_refs
+  ([`2a7de34`](https://github.com/shipsolid/repo-policy/commit/2a7de342e6cad23a268f03bfdcafc2ca1de68e89))
+
+raw.get(key, []) only substitutes the default when the key is absent, not when it's present with an
+  explicit null value -- if GitHub's GET response for
+  restrictions/dismissal_restrictions/bypass_pull_request_allowances ever sent "apps": null instead
+  of omitting the key, this crashed with TypeError: 'NoneType' object is not iterable. Switched to
+  raw.get(key) or [], which treats both the same.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Make BranchPolicy, RepoSettingsPolicy, PolicyConfig frozen
+  ([`20496ec`](https://github.com/shipsolid/repo-policy/commit/20496ec39f9a58acc122ae40b13a203f1d54af67))
+
+PullRequestPolicy/StatusChecksPolicy already documented and enforced the "point-in-time snapshot,
+  never mutated in place" invariant via frozen=True; BranchPolicy, RepoSettingsPolicy, and
+  PolicyConfig documented no such thing and had no enforcement, despite the same invariant actually
+  holding today (verified: no in-place attribute assignment exists anywhere in src/repo_policy/). An
+  accidental `resolved.enforce_admins = True` instead of model_copy(update=...) would have silently
+  mutated a shared instance in place, invisibly propagating through any aliased reference -- exactly
+  the class of bug frozen=True exists to catch on the sibling models.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Make permissive_branch_policy robust to a future colliding FieldSpec name
+  ([`182a0ed`](https://github.com/shipsolid/repo-policy/commit/182a0edfa9ddcde472a8f1bcf6ea1d27075d2b7f))
+
+It excluded "signed_commits" from its FIELD_SPECS-derived kwargs via a bare string-literal
+  comparison, then splatted the rest into BranchPolicy(...) alongside the explicit
+  enforcement=/signed_commits= keywords. A future FieldSpec named "enforcement" or "strict" would
+  collide with the explicit enforcement= keyword and crash with TypeError: got multiple values for
+  keyword argument (reproduced directly against the old implementation). Switched to
+  model_validate() over a plain dict built via key-overwrite (the same pattern
+  diff.resolve_desired() already uses) -- the explicit value always wins regardless of what
+  FIELD_SPECS contains.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Make status_checks diff order-insensitive
+  ([`e852290`](https://github.com/shipsolid/repo-policy/commit/e852290c9fcfa9b7f64b86bd4f34e062dff93e9c))
+
+StatusChecksPolicy.required is a semantically unordered set of contexts, but diff() compared it via
+  plain pydantic equality, which is positional. If GitHub's GET ever returned the same contexts in a
+  different order than policy.yml declared them, diff() would report a permanent phantom modify that
+  re-sends an identical-content-but-reordered payload on every apply, never converging. Added
+  _values_equal(), which compares status_checks via sorted(required) and falls back to plain
+  equality for every other field.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve per-check app_id/integration_id on required status checks
+  ([`1fdfb24`](https://github.com/shipsolid/repo-policy/commit/1fdfb24b89be4772e37c934940362e31797e26b3))
+
+to_branch_protection hardcoded every check's app_id to null and to_ruleset_rule omitted
+  integration_id entirely, both regardless of current state -- a human-pinned "only this GitHub App
+  may satisfy this check" was silently reset/dropped by any unrelated declared field change
+  triggering a required_status_checks rebuild. Both are now read through per-context from current
+  state, the same pattern already used for strict/do_not_enforce_on_create.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve required_review_thread_resolution on ruleset pull_request rule
+  ([`c2f2d78`](https://github.com/shipsolid/repo-policy/commit/c2f2d7805d8173c6b2c069355493168d18823578))
+
+pull_requests.to_ruleset_rule had no current-state parameter at all (unlike every sibling to_*_rule
+  function) and unconditionally hardcoded required_review_thread_resolution to False -- a real,
+  independently-settable ruleset parameter distinct from required_conversation_resolution (which IS
+  rejected outright under enforcement: ruleset). Any unrelated pull_requests field change rebuilding
+  the rules array silently clobbered a human-set True back to False. Now read through from current
+  state, same pattern as status_checks.to_ruleset_rule.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Reject --repo with extra slashes or an empty owner/name segment
+  ([`3e3c28a`](https://github.com/shipsolid/repo-policy/commit/3e3c28aaaa70d9a46965ca2580cef304496c98e9))
+
+_split_repo() only rejected a repo string with zero slashes; a string with more than one slash
+  (typo, or a pasted URL fragment like 'owner/name/tree/main') silently passed through via
+  split('/', 1), discarding everything after the second segment and building a malformed API path.
+  Read calls using allow_404=True would then silently return None -- indistinguishable from "no
+  protection configured" -- instead of failing fast. Now validates exactly two non-empty segments.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Stop render_repo_settings claiming '0 changes required' next to a warning
+  ([`2c26db5`](https://github.com/shipsolid/repo-policy/commit/2c26db51da173747b35f24f4faba54fef50216cf))
+
+The summary line was gated on "changes or unavailable", so an unavailable-only result (a declared
+  field ineligible on this repo, no actual drift) printed "0 changes required." directly beneath its
+  own "? ... unavailable" warning -- self-contradictory output. Now gated purely on result.changes;
+  an unavailable-only result prints "No repo-level setting changes required." instead.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Wrap branch_protection.from_api's ValidationError as PolicyResolutionError
+  ([`6731185`](https://github.com/shipsolid/repo-policy/commit/67311857837f540557eb6430a13f56ccbc6adf20))
+
+from_api() built a BranchPolicy directly from live GET data with no try/except, so a model_validator
+  rejection (e.g. GitHub ever returning allow_fork_syncing=true with lock_branch false/absent)
+  propagated as a raw pydantic ValidationError -- uncaught by cli.py's except GitHubAPIError/
+  PolicyResolutionError, crashing with Python's default exit code 1 and colliding with EXIT_DRIFT,
+  the exact ambiguity class the httpx-retry wrapping was built to prevent for network errors. Now
+  wrapped as PolicyResolutionError, which cli.py already handles cleanly.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Wrap response.json() parsing to raise clean GitHubAPIError on invalid JSON
+  ([`9bbecf7`](https://github.com/shipsolid/repo-policy/commit/9bbecf7541893e1fc527f47c0050e92a7a09ca2b))
+
+Every response.json() call happened outside _request()'s try/except, so a 2xx response with a
+  truncated or non-JSON body (proxy/CDN interstitial, network hiccup after headers sent) raised an
+  uncaught json.JSONDecodeError -- the same ambiguous-exit-code problem the transport-error retry
+  wrapping in _request() already solves for connection failures. Added _parse_json() and routed all
+  twelve .json() call sites through it.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Fix ARCHITECTURE.md's incorrect claim about unavailable drift exit code
+  ([`e1fe631`](https://github.com/shipsolid/repo-policy/commit/e1fe6318f9534efaf2eb9a4c1b5547c50b861aca))
+
+Stated that an 'unavailable' repo-settings outcome "never sets audit/plan's drift exit code,"
+  directly contradicted by cli.py's _run_check (which sets any_drift=True on unavailable) and by
+  test_audit_reports_drift_for_declared_but_unavailable_setting_with_no_other_changes. An engineer
+  reading the old text could reasonably conclude an unavailable setting can never fail a CI gate,
+  then hit an unexpected exit-1 failure the docs said couldn't happen.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Refactoring
+
+- Dedup permissive BranchPolicy/PullRequestPolicy literals via FieldSpec registry
+  ([`7862088`](https://github.com/shipsolid/repo-policy/commit/7862088421386090d8b89cf431f70c7fe150a72e))
+
+branch_protection.from_api(None) and rulesets.from_api(None) each hand-typed the same "nothing
+  configured" BranchPolicy literal; pull_requests.py's two from_*(None) fallbacks hand-typed the
+  same PullRequestPolicy literal a second time. Both now build from models.FIELD_SPECS via the new
+  permissive_branch_policy()/PERMISSIVE_PULL_REQUESTS, so the four call sites can't drift from each
+  other or from diff._SCHEMA_DEFAULTS.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Derive diff._FIELDS/_SCHEMA_DEFAULTS/_INVERTED_FIELDS from FieldSpec registry
+  ([`507417b`](https://github.com/shipsolid/repo-policy/commit/507417b8281f91b0ea5aa8d0ca6a28927cd1b1e0))
+
+Same names, same values -- now sourced from models.FIELD_SPECS instead of three independently
+  hand-typed tables that had to be kept in sync by hand.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Derive render._LABELS from FieldSpec registry
+  ([`92ecf02`](https://github.com/shipsolid/repo-policy/commit/92ecf020e29cb27fcee59f9c23ba1ba73b7cf730))
+
+Same name, same values -- sourced from models.FIELD_SPECS instead of a fifth hand-typed copy of the
+  same field-name-to-label facts.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Introduce FieldSpec registry as single source of BranchPolicy field metadata
+  ([`994f216`](https://github.com/shipsolid/repo-policy/commit/994f21629264261b2424d136161b53c9300abf2f))
+
+Adds models.FieldSpec (permissive default, inverted polarity, ruleset support, display label) and
+  models.FIELD_SPECS, deriving _RULESET_UNSUPPORTED_FIELDS from it instead of hand-typing the same
+  facts a second time. Closes out a recommendation raised independently across five review passes
+  this session: no single registry backed BranchPolicy's field metadata, so it was hand-duplicated
+  across diff.py/models.py/render.py/the policy translators.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Testing
+
+- Cross-check FIELD_SPECS against BranchPolicy.model_fields itself
+  ([`68bf16b`](https://github.com/shipsolid/repo-policy/commit/68bf16b969220aaf79f7fdde965454a154b5f297))
+
+test_field_specs_cover_every_diffable_field compared FIELD_SPECS names against a second hand-typed
+  literal list, so it could never catch a future BranchPolicy field added without a matching
+  FieldSpec entry -- neither side of the old assertion referenced BranchPolicy at all. Now
+  cross-checked against BranchPolicy.model_fields directly (minus enforcement/strict, the only two
+  non-diffable mode-selector fields), verified to still pass today and to actually fail if the two
+  ever diverge.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Derive ruleset-unsupported field set from FieldSpec registry
+  ([`ed4763d`](https://github.com/shipsolid/repo-policy/commit/ed4763d17a0b55bbe3c8b0c8a4c4e4660b06d07a))
+
+This test file hand-copied the same 5-field ruleset-unsupported set a third time
+  (models._RULESET_UNSUPPORTED_FIELDS and diff._SCHEMA_DEFAULTS were the other two, now both derived
+  from models.FIELD_SPECS too). Sourcing it from the registry closes the last hand-maintained copy
+  of this fact.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.4.6 (2026-09-20)
 
 ### Bug Fixes
