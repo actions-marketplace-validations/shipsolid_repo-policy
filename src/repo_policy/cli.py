@@ -64,9 +64,10 @@ def _resolve_repo(repo: str | None) -> str:
 
 
 def _split_repo(resolved_repo: str) -> tuple[str, str]:
-    if "/" not in resolved_repo:
+    parts = resolved_repo.split("/")
+    if len(parts) != 2 or not parts[0] or not parts[1]:
         raise _config_error(f"invalid repository {resolved_repo!r}; expected 'owner/name'")
-    owner, name = resolved_repo.split("/", 1)
+    owner, name = parts
     return owner, name
 
 

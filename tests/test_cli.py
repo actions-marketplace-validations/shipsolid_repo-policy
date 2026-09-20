@@ -135,6 +135,27 @@ def test_audit_reports_usage_error_on_malformed_repo(mock_client_cls):
 
 
 @patch("repo_policy.cli.GitHubClient")
+def test_audit_reports_usage_error_on_repo_with_extra_slashes(mock_client_cls):
+    """A --repo with more than one slash (typo, or a pasted URL fragment like
+    'owner/name/tree/main') previously passed _split_repo's single check (only zero slashes was
+    rejected) via split('/', 1), silently discarding everything after the second segment and
+    building a malformed API path instead of failing fast."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "audit",
+            "--config", "tests/fixtures/policy_no_requirements.yml",
+            "--repo", "acme/widgets/extra",
+            "--token", "t",
+        ],
+    )
+    assert result.exit_code == 2
+    assert "invalid repository" in result.output
+    mock_client_cls.assert_not_called()
+
+
+@patch("repo_policy.cli.GitHubClient")
 def test_audit_reports_usage_error_when_repo_cannot_be_resolved(mock_client_cls, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
