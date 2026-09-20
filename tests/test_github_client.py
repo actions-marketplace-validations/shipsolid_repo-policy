@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from repo_policy.github_client import GitHubAPIError, GitHubClient, _expect_response
+from repo_policy.github_client import GitHubAPIError, GitHubClient, _actor_refs, _expect_response
 
 
 @pytest.fixture
@@ -12,6 +12,29 @@ def client():
     c = GitHubClient(token="test-token", owner="acme", repo="widgets", backoff_seconds=0.0)
     yield c
     c.close()
+
+
+def test_actor_refs_none_when_raw_is_none():
+    assert _actor_refs(None) is None
+
+
+def test_actor_refs_extracts_bare_identifiers():
+    raw = {
+        "users": [{"login": "octocat"}],
+        "teams": [{"slug": "core"}],
+        "apps": [{"slug": "dependabot"}],
+    }
+    assert _actor_refs(raw) == {"users": ["octocat"], "teams": ["core"], "apps": ["dependabot"]}
+
+
+def test_actor_refs_treats_explicit_null_sub_key_the_same_as_absent():
+    """GitHub's GET response for restrictions/dismissal_restrictions/bypass_pull_request_allowances
+    normally omits a sub-key entirely when it's empty, which raw.get(key, []) already handles --
+    but an explicit `"apps": null` (or users/teams) previously crashed with
+    TypeError: 'NoneType' object is not iterable, since .get(key, []) only substitutes the
+    default when the key is absent, not when it's present with a None value."""
+    raw = {"users": [{"login": "octocat"}], "teams": None, "apps": None}
+    assert _actor_refs(raw) == {"users": ["octocat"], "teams": [], "apps": []}
 
 
 @respx.mock

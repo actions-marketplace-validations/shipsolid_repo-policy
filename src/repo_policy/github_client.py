@@ -48,13 +48,17 @@ def _actor_refs(raw: dict | None) -> dict | None:
     required_pull_request_reviews.dismissal_restrictions/bypass_pull_request_allowances) as
     arrays of full user/team/app objects; the PUT/PATCH request body expects arrays of bare
     login/slug strings. Sending the GET shape back verbatim 422s -- this is the transform between
-    the two, shared by every endpoint with this exact GET/PUT asymmetry."""
+    the two, shared by every endpoint with this exact GET/PUT asymmetry. `raw.get(key) or []`
+    (not `raw.get(key, [])`) so an explicit `null` sub-key is treated the same as an absent one --
+    `.get(key, [])` only substitutes the default when the key is missing entirely, not when it's
+    present with a None value, which previously crashed with TypeError: 'NoneType' object is not
+    iterable."""
     if raw is None:
         return None
     return {
-        "users": [user["login"] for user in raw.get("users", [])],
-        "teams": [team["slug"] for team in raw.get("teams", [])],
-        "apps": [app["slug"] for app in raw.get("apps", [])],
+        "users": [user["login"] for user in raw.get("users") or []],
+        "teams": [team["slug"] for team in raw.get("teams") or []],
+        "apps": [app["slug"] for app in raw.get("apps") or []],
     }
 
 
