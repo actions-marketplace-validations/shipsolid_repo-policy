@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from repo_policy.models import (
-    _RULESET_UNSUPPORTED_FIELDS,
+    FIELD_SPECS,
     BranchPolicy,
     PullRequestPolicy,
     StatusChecksPolicy,
@@ -21,46 +21,22 @@ class PolicyResolutionError(Exception):
     from current while declaring lock_branch=False) -- model_copy() doesn't re-validate, so this
     is what actually catches it before the invalid combination reaches the GitHub API."""
 
-_FIELDS = (
-    "pull_requests",
-    "status_checks",
-    "signed_commits",
-    "linear_history",
-    "allow_force_push",
-    "allow_deletion",
-    "enforce_admins",
-    "required_conversation_resolution",
-    "lock_branch",
-    "allow_fork_syncing",
-    "clear_restrictions",
-)
-
-# enforce_admins/required_conversation_resolution/lock_branch/allow_fork_syncing/
-# clear_restrictions' permissive values come from models._RULESET_UNSUPPORTED_FIELDS -- the two
-# describe the same fact (this field's harmless no-op value) and must agree, so this is the one
-# place that reads it rather than re-declaring a second copy.
-_SCHEMA_DEFAULTS: dict[str, Any] = {
-    "pull_requests": PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
-    # None, not StatusChecksPolicy(required=[]): branch_protection.from_api / rulesets.from_api
-    # both represent "no status checks configured" as None. The strict default must match that
-    # exact representation, or a fully-compliant permissive branch shows permanent phantom drift.
-    "status_checks": None,
-    "signed_commits": False,
-    "linear_history": False,
-    "allow_force_push": True,
-    "allow_deletion": True,
-    **_RULESET_UNSUPPORTED_FIELDS,
-}
-
-# allow_force_push/allow_deletion/clear_restrictions have inverted polarity vs. every other
-# field: False means a restriction IS present (force push blocked / a push-restriction allowlist
-# exists), True means no restriction — the opposite of fields like linear_history, where
-# False/empty means no rule exists. allow_fork_syncing is NOT inverted, despite superficially
-# resembling these -- GitHub only honors allow_fork_syncing=true when lock_branch=true is also
-# set (see models.py's _allow_fork_syncing_requires_lock_branch validator), so False/unset is the
-# safe, always-stable default here, not True. Confirmed via live-repo verification -- see
-# docs/test-strategy.md.
-_INVERTED_FIELDS = {"allow_force_push", "allow_deletion", "clear_restrictions"}
+# _FIELDS/_SCHEMA_DEFAULTS/_INVERTED_FIELDS are all derived from models.FIELD_SPECS (the single
+# source of truth for these per-field facts) rather than hand-typed -- see FieldSpec's docstring
+# for why that consolidation matters. status_checks' permissive default is None, not
+# StatusChecksPolicy(required=[]): branch_protection.from_api/rulesets.from_api both represent "no
+# status checks configured" as None, and the strict default must match that exact representation
+# or a fully-compliant permissive branch shows permanent phantom drift. allow_force_push/
+# allow_deletion/clear_restrictions have inverted polarity vs. every other field: False means a
+# restriction IS present (force push blocked / a push-restriction allowlist exists), True means no
+# restriction — the opposite of fields like linear_history, where False/empty means no rule
+# exists. allow_fork_syncing is NOT inverted, despite superficially resembling these -- GitHub
+# only honors allow_fork_syncing=true when lock_branch=true is also set (see models.py's
+# _allow_fork_syncing_requires_lock_branch validator), so False/unset is the safe, always-stable
+# default here, not True. Confirmed via live-repo verification -- see docs/test-strategy.md.
+_FIELDS = tuple(spec.name for spec in FIELD_SPECS)
+_SCHEMA_DEFAULTS: dict[str, Any] = {spec.name: spec.default for spec in FIELD_SPECS}
+_INVERTED_FIELDS = {spec.name for spec in FIELD_SPECS if spec.inverted}
 
 
 @dataclass(frozen=True)
