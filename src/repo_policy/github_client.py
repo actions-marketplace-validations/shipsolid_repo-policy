@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import httpx
 
@@ -9,6 +10,19 @@ class GitHubAPIError(Exception):
     def __init__(self, message: str, status_code: int | None = None):
         super().__init__(message)
         self.status_code = status_code
+
+
+def _parse_json(response: httpx.Response) -> Any:
+    """A 2xx response with a truncated or non-JSON body (proxy/CDN interstitial, network hiccup
+    after headers sent) previously raised an uncaught json.JSONDecodeError from a bare
+    response.json() call at each of this module's dozen call sites -- the same ambiguous-exit-code
+    problem _request()'s own transport-error retry wrapping already solves for connection
+    failures. json.JSONDecodeError is a ValueError subclass, so catching ValueError here covers it
+    without importing the json module just for its exception type."""
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise GitHubAPIError(f"invalid JSON response from GitHub: {exc}") from exc
 
 
 def _expect_response(response: httpx.Response | None) -> httpx.Response:
@@ -159,13 +173,13 @@ class GitHubClient:
         response = self._request(
             "GET", f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection", allow_404=True
         )
-        return response.json() if response is not None else None
+        return _parse_json(response) if response is not None else None
 
     def put_branch_protection(self, branch: str, payload: dict) -> dict:
         response = self._request(
             "PUT", f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection", json=payload
         )
-        return _expect_response(response).json()
+        return _parse_json(_expect_response(response))
 
     def get_required_signatures(self, branch: str) -> bool:
         response = self._request(
@@ -173,7 +187,7 @@ class GitHubClient:
             f"/repos/{self.owner}/{self.repo}/branches/{branch}/protection/required_signatures",
             allow_404=True,
         )
-        return response is not None and _unwrap(response.json(), False)
+        return response is not None and _unwrap(_parse_json(response), False)
 
     def set_required_signatures(self, branch: str, enabled: bool) -> None:
         method = "POST" if enabled else "DELETE"
@@ -184,11 +198,11 @@ class GitHubClient:
 
     def get_repo(self) -> dict:
         response = self._request("GET", f"/repos/{self.owner}/{self.repo}")
-        return _expect_response(response).json()
+        return _parse_json(_expect_response(response))
 
     def update_repo_settings(self, payload: dict) -> dict:
         response = self._request("PATCH", f"/repos/{self.owner}/{self.repo}", json=payload)
-        return _expect_response(response).json()
+        return _parse_json(_expect_response(response))
 
     def get_vulnerability_alerts(self) -> bool:
         response = self._request(
@@ -206,7 +220,7 @@ class GitHubClient:
         response = self._request(
             "GET", f"/repos/{self.owner}/{self.repo}/automated-security-fixes", allow_404=True
         )
-        return response is not None and _unwrap(response.json(), False)
+        return response is not None and _unwrap(_parse_json(response), False)
 
     def enable_automated_security_fixes(self) -> None:
         self._request("PUT", f"/repos/{self.owner}/{self.repo}/automated-security-fixes")
@@ -220,7 +234,7 @@ class GitHubClient:
             "GET", f"/repos/{self.owner}/{self.repo}/private-vulnerability-reporting",
             allow_404=True, allow_422=True,
         )
-        return _unwrap(response.json(), False) if response is not None else None
+        return _unwrap(_parse_json(response), False) if response is not None else None
 
     def enable_private_vulnerability_reporting(self) -> bool:
         """Returns False (meaning unavailable) on 422; True on success."""
@@ -243,7 +257,7 @@ class GitHubClient:
             "PATCH", f"/repos/{self.owner}/{self.repo}",
             json={"security_and_analysis": payload}, allow_422=True,
         )
-        return response.json() if response is not None else None
+        return _parse_json(response) if response is not None else None
 
     def list_rulesets(self) -> list[dict]:
         results: list[dict] = []
@@ -251,7 +265,7 @@ class GitHubClient:
         params: dict | None = {"per_page": 100}
         while path is not None:
             response = _expect_response(self._request("GET", path, params=params))
-            results.extend(response.json())
+            results.extend(_parse_json(response))
             next_link = response.links.get("next")
             path = next_link["url"] if next_link else None
             params = None  # the next-page URL already carries its own query string
@@ -259,7 +273,7 @@ class GitHubClient:
 
     def get_ruleset(self, ruleset_id: int) -> dict:
         response = self._request("GET", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}")
-        return _expect_response(response).json()
+        return _parse_json(_expect_response(response))
 
     def find_ruleset_by_name(self, name: str, rulesets: list[dict] | None = None) -> dict | None:
         candidates = rulesets if rulesets is not None else self.list_rulesets()
@@ -272,13 +286,13 @@ class GitHubClient:
         response = self._request(
             "POST", f"/repos/{self.owner}/{self.repo}/rulesets", json=payload, idempotent=False
         )
-        return _expect_response(response).json()
+        return _parse_json(_expect_response(response))
 
     def update_ruleset(self, ruleset_id: int, payload: dict) -> dict:
         response = self._request(
             "PUT", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}", json=payload
         )
-        return _expect_response(response).json()
+        return _parse_json(_expect_response(response))
 
     def delete_ruleset(self, ruleset_id: int) -> None:
         self._request("DELETE", f"/repos/{self.owner}/{self.repo}/rulesets/{ruleset_id}")

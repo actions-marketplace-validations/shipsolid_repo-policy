@@ -237,6 +237,19 @@ def test_get_branch_protection_returns_payload(client):
 
 
 @respx.mock
+def test_get_branch_protection_raises_clean_error_on_non_json_response(client):
+    """A 2xx response with a truncated/non-JSON body (proxy interstitial, network hiccup after
+    headers sent) previously raised an uncaught json.JSONDecodeError instead of a clean
+    GitHubAPIError -- the same ambiguous-exit-code problem the transport-error retry wrapping in
+    _request() already solves for connection failures."""
+    respx.get("https://api.github.com/repos/acme/widgets/branches/main/protection").mock(
+        return_value=httpx.Response(200, content=b"<html>not json</html>")
+    )
+    with pytest.raises(GitHubAPIError):
+        client.get_branch_protection("main")
+
+
+@respx.mock
 def test_put_branch_protection_sends_payload(client):
     route = respx.put("https://api.github.com/repos/acme/widgets/branches/main/protection").mock(
         return_value=httpx.Response(200, json={"enforce_admins": {"enabled": False}})
@@ -381,6 +394,24 @@ def test_get_repo(client):
     )
     data = client.get_repo()
     assert data["default_branch"] == "main"
+
+
+@respx.mock
+def test_get_repo_raises_clean_error_on_non_json_response(client):
+    respx.get("https://api.github.com/repos/acme/widgets").mock(
+        return_value=httpx.Response(200, content=b"<html>not json</html>")
+    )
+    with pytest.raises(GitHubAPIError):
+        client.get_repo()
+
+
+@respx.mock
+def test_list_rulesets_raises_clean_error_on_non_json_response(client):
+    respx.get("https://api.github.com/repos/acme/widgets/rulesets").mock(
+        return_value=httpx.Response(200, content=b"<html>not json</html>")
+    )
+    with pytest.raises(GitHubAPIError):
+        client.list_rulesets()
 
 
 @respx.mock
