@@ -95,27 +95,38 @@ def apply_all(
     ]
 
 
-def prune_rulesets(
-    client: GitHubClient, config: PolicyConfig, *, rulesets_cache: list[dict] | None = None
-) -> list[str]:
-    """Strict-mode only, gated by the top-level `strict` default (a removed branch has no
-    per-branch setting left to consult). Deletes a `repo-policy:` ruleset whenever its branch is
-    no longer declared under enforcement: ruleset -- either removed from policy.yml entirely, or
-    still present but switched to enforcement: branch_protection. Only ever touches rulesets
-    matching the `repo-policy:` naming convention, so branch-name-plus-enforcement is enough to
-    prove ownership -- never touches anything else."""
+def find_orphaned_ruleset_names(config: PolicyConfig, all_rulesets: list[dict]) -> list[str]:
+    """`repo-policy:` rulesets whose branch is no longer declared under enforcement: ruleset --
+    either removed from policy.yml entirely, or still present but switched to
+    enforcement: branch_protection. Only ever matches rulesets following the `repo-policy:`
+    naming convention, so branch-name-plus-enforcement is enough to prove ownership -- never
+    matches anything else. Shared by prune_rulesets (which deletes them, strict-mode only) and
+    audit.detect_orphaned_rulesets (which reports them before that deletion happens, gated the
+    same way)."""
     declared_ruleset_names = {
         rulesets.ruleset_name(branch)
         for branch, policy in config.branches.items()
         if policy.enforcement == "ruleset"
     }
+    return [
+        summary["name"]
+        for summary in all_rulesets
+        if summary["name"].startswith("repo-policy:") and summary["name"] not in declared_ruleset_names
+    ]
+
+
+def prune_rulesets(
+    client: GitHubClient, config: PolicyConfig, *, rulesets_cache: list[dict] | None = None
+) -> list[str]:
+    """Strict-mode only, gated by the top-level `strict` default (a removed branch has no
+    per-branch setting left to consult)."""
     all_rulesets = rulesets_cache if rulesets_cache is not None else client.list_rulesets()
+    orphaned_names = set(find_orphaned_ruleset_names(config, all_rulesets))
     deleted: list[str] = []
     for summary in all_rulesets:
-        name = summary["name"]
-        if name.startswith("repo-policy:") and name not in declared_ruleset_names:
+        if summary["name"] in orphaned_names:
             client.delete_ruleset(summary["id"])
-            deleted.append(name)
+            deleted.append(summary["name"])
     return deleted
 
 

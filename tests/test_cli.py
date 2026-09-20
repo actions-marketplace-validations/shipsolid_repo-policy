@@ -57,6 +57,27 @@ def test_audit_exits_1_on_drift(mock_client_cls):
 
 
 @patch("repo_policy.cli.GitHubClient")
+def test_audit_reports_orphaned_ruleset_and_exits_1_in_strict_mode(mock_client_cls):
+    """A branch removed from policy.yml (or switched off enforcement: ruleset) under top-level
+    strict mode leaves an orphaned repo-policy: ruleset that the next apply's prune_rulesets
+    would silently delete -- audit must warn about it and treat it as drift, not report full
+    compliance right up until that deletion happens (policy_strict.yml declares only "main"
+    under branch_protection with strict: true, so "main"'s own declared change plus the
+    unrelated orphaned ruleset both count toward drift here)."""
+    mock_client = mock_client_cls.return_value.__enter__.return_value
+    mock_client.get_branch_protection.return_value = None
+    mock_client.get_required_signatures.return_value = False
+    mock_client.list_rulesets.return_value = [{"id": 9, "name": "repo-policy:removed-branch"}]
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["audit", "--config", "tests/fixtures/policy_strict.yml", "--repo", "acme/widgets", "--token", "t"],
+    )
+    assert result.exit_code == 1
+    assert "orphaned ruleset repo-policy:removed-branch detected" in result.output
+
+
+@patch("repo_policy.cli.GitHubClient")
 def test_plan_renders_diff_and_exits_1_on_drift(mock_client_cls):
     mock_client = mock_client_cls.return_value.__enter__.return_value
     mock_client.get_branch_protection.return_value = None

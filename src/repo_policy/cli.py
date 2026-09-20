@@ -111,7 +111,7 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
 
     try:
         with client as client:
-            results = audit_all(client, config)
+            results, orphaned_rulesets = audit_all(client, config)
             repo_settings_result = plan_repo_settings(client, config)
     except GitHubAPIError as exc:
         click.echo(str(exc), err=True)
@@ -135,6 +135,13 @@ def _run_check(config_path: str, repo: str | None, token: str | None, *, render:
                 "automatically (no ownership marker), remove it manually if it's no longer wanted"
             )
         any_drift = any_drift or not result.compliant
+
+    for ruleset_name in orphaned_rulesets:
+        click.echo(
+            f"orphaned ruleset {ruleset_name} detected -- its branch is no longer declared "
+            "under enforcement: ruleset; the next apply (strict mode) will remove it"
+        )
+    any_drift = any_drift or bool(orphaned_rulesets)
 
     if repo_settings_result.changes or repo_settings_result.unavailable:
         if render:
