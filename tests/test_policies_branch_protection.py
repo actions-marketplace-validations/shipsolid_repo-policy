@@ -1,5 +1,6 @@
 import pytest
 
+from repo_policy.diff import PolicyResolutionError
 from repo_policy.models import BranchPolicy, PullRequestPolicy, StatusChecksPolicy
 from repo_policy.policies import branch_protection
 
@@ -32,6 +33,18 @@ def test_from_api_reads_wrapped_booleans():
     assert result.allow_deletion is False
     assert result.signed_commits is True
     assert result.enforce_admins is True
+
+
+def test_from_api_wraps_validation_error_as_policy_resolution_error():
+    """allow_fork_syncing=true with lock_branch false/absent is rejected by BranchPolicy's own
+    model_validator (models.py's _allow_fork_syncing_requires_lock_branch) -- if GitHub's GET
+    response ever returned that combination, from_api's direct BranchPolicy(...) construction
+    would previously raise a raw pydantic ValidationError that nothing above cli.py catches,
+    crashing with Python's default exit code 1 (colliding with EXIT_DRIFT) instead of a clean,
+    already-handled PolicyResolutionError."""
+    data = {"allow_fork_syncing": {"enabled": True}, "lock_branch": {"enabled": False}}
+    with pytest.raises(PolicyResolutionError):
+        branch_protection.from_api(data, signed_commits=False)
 
 
 def test_to_api_payload_builds_full_replace_body():
