@@ -1,23 +1,13 @@
 from __future__ import annotations
 
 from repo_policy.diff import _FIELDS, Change
+from repo_policy.models import FIELD_SPECS
 from repo_policy.repo_settings import RepoSettingsResult
 
 _SYMBOLS = {"add": "+", "modify": "~", "remove": "-"}
 
-_LABELS = {
-    "pull_requests": "Pull request requirements",
-    "status_checks": "Required status checks",
-    "signed_commits": "Signed commits",
-    "linear_history": "Linear history",
-    "allow_force_push": "Force pushes",
-    "allow_deletion": "Branch deletion",
-    "enforce_admins": "Admin enforcement",
-    "required_conversation_resolution": "Conversation resolution",
-    "lock_branch": "Branch lock",
-    "allow_fork_syncing": "Fork syncing",
-    "clear_restrictions": "Push restrictions",
-}
+# Derived from models.FIELD_SPECS (single source of truth) rather than hand-typed a second time.
+_LABELS = {spec.name: spec.label for spec in FIELD_SPECS}
 
 _REPO_SETTINGS_LABELS = {
     "delete_branch_on_merge": "Delete branch on merge",
