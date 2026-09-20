@@ -86,3 +86,14 @@ def test_render_repo_settings_shows_unavailable():
     result = RepoSettingsResult(unavailable=["private_vulnerability_reporting"])
     output = render_repo_settings("acme/widgets", result)
     assert "? Private vulnerability reporting unavailable on this repository" in output
+
+
+def test_render_repo_settings_unavailable_only_does_not_claim_changes_required():
+    """result.changes is empty here -- only result.unavailable is populated (a declared field
+    that's ineligible on this repo, no actual drift). The summary line must not say '0 changes
+    required.' directly beneath the unavailable warning above it -- that reads as self-
+    contradictory even though the process still exits with drift status for the caller."""
+    result = RepoSettingsResult(unavailable=["private_vulnerability_reporting"])
+    output = render_repo_settings("acme/widgets", result)
+    assert "0 changes required." not in output
+    assert "No repo-level setting changes required." in output

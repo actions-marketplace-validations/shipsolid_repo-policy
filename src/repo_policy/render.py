@@ -56,7 +56,11 @@ def render_repo_settings(repo: str, result: RepoSettingsResult) -> str:
         lines.append(f"? {label:<28} unavailable on this repository")
 
     lines.append("")
-    if not result.changes and not result.unavailable:
+    # Based purely on result.changes, not "changes or unavailable" -- an unavailable-only result
+    # (a declared field that's ineligible on this repo, no actual drift) already got its own "?"
+    # warning line above; claiming "0 changes required." directly beneath it reads as
+    # self-contradictory even though the CLI still exits with drift status for that case.
+    if not result.changes:
         lines.append("No repo-level setting changes required.")
     else:
         noun = "change" if len(result.changes) == 1 else "changes"
