@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from repo_policy.github_client import _actor_refs
 from repo_policy.models import PullRequestPolicy
 
@@ -22,8 +24,13 @@ def to_branch_protection(policy: PullRequestPolicy, current: dict | None = None)
         "dismiss_stale_reviews": policy.dismiss_stale_reviews,
         "require_last_push_approval": policy.require_last_push_approval,
     }
-    if current.get("dismissal_restrictions") is not None:
-        payload["dismissal_restrictions"] = _actor_refs(current["dismissal_restrictions"])
+    dismissal_restrictions = current.get("dismissal_restrictions")
+    if dismissal_restrictions is not None:
+        # dismissal_restrictions supports only users/teams, unlike bypass_pull_request_allowances
+        # and branch-protection restrictions (both apps-capable) -- _actor_refs always includes
+        # an "apps" key, so drop it here rather than risk GitHub rejecting an unrecognized field.
+        refs = cast(dict, _actor_refs(dismissal_restrictions))  # non-None: input was checked above
+        payload["dismissal_restrictions"] = {"users": refs["users"], "teams": refs["teams"]}
     if current.get("bypass_pull_request_allowances") is not None:
         payload["bypass_pull_request_allowances"] = _actor_refs(current["bypass_pull_request_allowances"])
     return payload
