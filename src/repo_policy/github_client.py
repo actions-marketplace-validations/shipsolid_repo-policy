@@ -99,7 +99,20 @@ class GitHubClient:
         (and every other call) keeps the default and retries on 5xx like any other method."""
         attempt = 0
         while True:
-            response = self._client.request(method, path, json=json, params=params)
+            try:
+                response = self._client.request(method, path, json=json, params=params)
+            except httpx.RequestError as exc:
+                # A transient network blip (DNS hiccup, TLS reset, timeout) previously propagated
+                # as a raw httpx exception -- uncaught by cli.py's except GitHubAPIError/
+                # PolicyResolutionError, it crashed with Python's default exit code 1, colliding
+                # with EXIT_DRIFT the same way _ConfigClickException exists to prevent for setup
+                # errors. Retry it exactly like a 5xx (same idempotency rule), then surface a
+                # clean GitHubAPIError instead of httpx's own exception type.
+                if idempotent and attempt < self._max_retries:
+                    time.sleep(self._backoff_seconds * (2**attempt))
+                    attempt += 1
+                    continue
+                raise GitHubAPIError(f"network error on {method} {path}: {exc}") from exc
 
             if response.status_code == 404 and allow_404:
                 return None

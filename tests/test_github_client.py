@@ -97,6 +97,43 @@ def test_create_ruleset_does_not_retry_on_500(client):
 
 
 @respx.mock
+def test_request_retries_transport_error_then_succeeds(client):
+    """A transient network blip (DNS hiccup, TLS reset, timeout) must not crash with a raw
+    httpx exception -- it should retry like any other transient failure and, if every attempt
+    fails, surface a clean GitHubAPIError instead of propagating httpx's own exception type."""
+    route = respx.get("https://api.github.com/repos/acme/widgets/ping")
+    route.side_effect = [
+        httpx.ConnectError("connection refused"),
+        httpx.Response(200, json={"ok": True}),
+    ]
+    response = client._request("GET", "/repos/acme/widgets/ping")
+    assert response.json() == {"ok": True}
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_request_raises_github_api_error_after_exhausting_retries_on_transport_error(client):
+    route = respx.get("https://api.github.com/repos/acme/widgets/ping").mock(
+        side_effect=httpx.ReadTimeout("timed out")
+    )
+    with pytest.raises(GitHubAPIError):
+        client._request("GET", "/repos/acme/widgets/ping")
+    assert route.call_count == client._max_retries + 1
+
+
+@respx.mock
+def test_request_does_not_retry_transport_error_for_non_idempotent_call(client):
+    route = respx.post("https://api.github.com/repos/acme/widgets/rulesets").mock(
+        side_effect=httpx.ConnectError("connection refused")
+    )
+    with pytest.raises(GitHubAPIError):
+        client._request(
+            "POST", "/repos/acme/widgets/rulesets", json={"name": "repo-policy:main"}, idempotent=False
+        )
+    assert route.call_count == 1
+
+
+@respx.mock
 def test_request_still_retries_post_on_429(client):
     route = respx.post("https://api.github.com/repos/acme/widgets/rulesets")
     route.side_effect = [
