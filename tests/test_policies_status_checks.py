@@ -64,6 +64,27 @@ def test_to_ruleset_rule_preserves_strict_from_current_state():
     assert rule["parameters"]["strict_required_status_checks_policy"] is True
 
 
+def test_to_ruleset_rule_defaults_do_not_enforce_on_create_false_when_no_current_state():
+    rule = status_checks.to_ruleset_rule(StatusChecksPolicy(required=["build"]), current=None)
+    assert rule["parameters"]["do_not_enforce_on_create"] is False
+
+
+def test_to_ruleset_rule_preserves_do_not_enforce_on_create_from_current_state():
+    """do_not_enforce_on_create has no modeled field -- a human-enabled 'allow repositories and
+    branches to be created if this check would otherwise prevent it' must survive a full rule
+    rebuild triggered by an unrelated, modeled field changing."""
+    current_rule = {
+        "type": "required_status_checks",
+        "parameters": {
+            "required_status_checks": [{"context": "build"}],
+            "strict_required_status_checks_policy": False,
+            "do_not_enforce_on_create": True,
+        },
+    }
+    rule = status_checks.to_ruleset_rule(StatusChecksPolicy(required=["build"]), current=current_rule)
+    assert rule["parameters"]["do_not_enforce_on_create"] is True
+
+
 def test_from_ruleset_rule_none_when_absent():
     assert status_checks.from_ruleset_rule(None) is None
 
