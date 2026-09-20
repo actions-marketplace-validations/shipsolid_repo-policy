@@ -231,6 +231,26 @@ def test_clear_restrictions_inverted_polarity_remove_when_clearing_an_existing_r
     assert changes[0].action == "remove"
 
 
+def test_diff_treats_status_checks_as_equal_regardless_of_context_order():
+    """StatusChecksPolicy.required is a semantically unordered set of contexts, but pydantic's
+    default equality compares the list positionally. If GitHub's GET ever returns the same
+    contexts in a different order than policy.yml declared them, diff() must not report a
+    permanent phantom 'modify' that re-issues an identical-content-but-reordered API call on
+    every single apply without ever converging."""
+    current = PERMISSIVE.model_copy(update={"status_checks": StatusChecksPolicy(required=["build", "test"])})
+    desired = PERMISSIVE.model_copy(update={"status_checks": StatusChecksPolicy(required=["test", "build"])})
+    assert diff(desired, current) == []
+
+
+def test_diff_still_detects_a_real_status_checks_content_change():
+    current = PERMISSIVE.model_copy(update={"status_checks": StatusChecksPolicy(required=["build"])})
+    desired = PERMISSIVE.model_copy(update={"status_checks": StatusChecksPolicy(required=["build", "test"])})
+    changes = diff(desired, current)
+    assert len(changes) == 1
+    assert changes[0].field == "status_checks"
+    assert changes[0].action == "modify"
+
+
 def test_strict_mode_reports_no_drift_for_an_already_compliant_permissive_branch():
     """Regression test: found via live testing against a real repo. A branch with no status
     checks configured normalizes to status_checks=None (see branch_protection.from_api /

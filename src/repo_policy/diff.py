@@ -110,7 +110,7 @@ def diff(desired: BranchPolicy, current: BranchPolicy) -> list[Change]:
     for field in _FIELDS:
         desired_value = getattr(desired, field)
         current_value = getattr(current, field)
-        if desired_value == current_value:
+        if _values_equal(field, desired_value, current_value):
             continue
         # Not raw-equal, but both may still be "empty" in a way that produces the identical API
         # payload -- e.g. status_checks=StatusChecksPolicy(required=[]) vs the None that
@@ -137,6 +137,22 @@ def diff(desired: BranchPolicy, current: BranchPolicy) -> list[Change]:
             )
         )
     return changes
+
+
+def _values_equal(field: str, desired_value: Any, current_value: Any) -> bool:
+    """Plain `==` for every field except status_checks, whose `required` is a semantically
+    unordered set of contexts -- pydantic's default equality compares it positionally, so if
+    GitHub's GET ever returns the same contexts in a different order than policy.yml declared
+    them, raw equality reports a permanent phantom 'modify' that can never converge (every apply
+    re-sends an identical-content-but-reordered payload, which GitHub may again return in yet
+    another order)."""
+    if (
+        field == "status_checks"
+        and isinstance(desired_value, StatusChecksPolicy)
+        and isinstance(current_value, StatusChecksPolicy)
+    ):
+        return sorted(desired_value.required) == sorted(current_value.required)
+    return bool(desired_value == current_value)
 
 
 def _classify_action(field: str, current_value: Any, desired_value: Any) -> ChangeAction:
