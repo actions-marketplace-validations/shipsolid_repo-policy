@@ -1,6 +1,119 @@
 # CHANGELOG
 
 
+## v0.4.6 (2026-09-20)
+
+### Bug Fixes
+
+- Catch httpx transport errors, retry and wrap instead of crashing raw
+  ([`190b897`](https://github.com/shipsolid/repo-policy/commit/190b8970a570c88d04d674e4af6a3dd63365658c))
+
+_request()'s retry loop only ever branched on response.status_code from a response object it assumed
+  it would always get back -- a transient network failure (DNS hiccup, TLS reset, connection
+  refused, read/connect timeout) propagated as a raw, unwrapped httpx.RequestError. cli.py only
+  catches GitHubAPIError/PolicyResolutionError, so this crashed with a Python traceback and the
+  interpreter's default exit code 1 -- colliding with EXIT_DRIFT, the exact ambiguity
+  _ConfigClickException already exists to prevent for setup errors, just via an uncaught path
+  instead of a click one.
+
+Now retries a transport error exactly like a 5xx (same idempotency rule -- create_ruleset still
+  won't retry), then raises a clean GitHubAPIError if every attempt fails, so a flaky connection
+  mid-run gets EXIT_API_ERROR instead of a raw crash a CI pipeline can't distinguish from real
+  drift.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Dismissal_restrictions payload never includes an apps key
+  ([`36b5d9c`](https://github.com/shipsolid/repo-policy/commit/36b5d9cd1ef24fd533228bd27b40f49f350b12b9))
+
+Caught before it could ship as a live bug: the shared _actor_refs() helper (introduced in e36927a)
+  always emits users/teams/apps, but GitHub's required_pull_request_reviews.dismissal_restrictions
+  schema supports only users/teams -- unlike bypass_pull_request_allowances and branch-protection
+  restrictions, which both accept apps. Sending an unrecognized "apps" key in dismissal_restrictions
+  risked 422ing the entire branch-protection PUT, failing an unrelated legitimate change bundled in
+  the same apply call, not just the dismissal-restriction preservation this was meant to fix.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve block_creations on branch-protection updates
+  ([`6ae3b92`](https://github.com/shipsolid/repo-policy/commit/6ae3b92f314618b5fda53d1be0b1a445a43f27c4))
+
+Same bug class as the ruleset enforcement/bypass_actors/unmanaged-rule-type fixes (d7a82af,
+  85dd8b6): block_creations ("restrict who can create matching branches") has no modeled
+  BranchPolicy field and was never read from current_raw either, so a human-enabled block_creations
+  setting was silently reset to false the next time repo-policy PUT branch protection for any
+  unrelated reason. Now read through via the existing _unwrap helper, same pattern as every other
+  {"enabled": bool}-wrapped field on this resource.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve do_not_enforce_on_create on ruleset required_status_checks rule
+  ([`535d8b3`](https://github.com/shipsolid/repo-policy/commit/535d8b36a036f58a1ea1dda8de20139600602e06))
+
+Same class as strict_required_status_checks_policy right next to it: GitHub's Rulesets
+  required_status_checks rule has a third parameter, do_not_enforce_on_create ("allow repositories
+  and branches to be created if this check would otherwise prevent it"), which to_ruleset_rule
+  already had the current-state read-through machinery for (via `current_params`) but never actually
+  read this one field through -- it was simply absent from the returned parameters, defaulting to
+  false on GitHub's side the next time repo-policy rebuilt the rule for an unrelated, modeled-field
+  change.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve PR-review dismissal_restrictions/bypass_pull_request_allowances
+  ([`150ac5a`](https://github.com/shipsolid/repo-policy/commit/150ac5a0362bd6fc13e6fd0a56ff7582e355fe79))
+
+Same bug class as block_creations (9b6e9e6) and the earlier ruleset fields:
+  required_pull_request_reviews.dismissal_restrictions (who can dismiss PR reviews) and
+  .bypass_pull_request_allowances (who can bypass the PR requirement) have no modeled field and
+  pull_requests.to_branch_protection didn't accept a `current` parameter at all -- structurally
+  unable to preserve either, unlike its sibling status_checks.to_branch_protection, which already
+  threads `current` through for exactly this "unmodeled sub-field" reason. A human-configured
+  dismissal team or bypass allowance was silently wiped the next time repo-policy PUT branch
+  protection for any unrelated reason.
+
+Also generalizes branch_protection.py's restrictions GET-to-PUT shape transform (7fc2473) into a
+  shared _actor_refs helper in github_client.py, since
+  dismissal_restrictions/bypass_pull_request_allowances have the exact same users/teams/apps
+  full-object-vs-login-string asymmetry.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Preserve ruleset conditions.exclude and extra include entries
+  ([`daadce9`](https://github.com/shipsolid/repo-policy/commit/daadce9ab025288331cc37c2fe759e0dfc119428))
+
+Same bug class again: conditions.ref_name was fully rebuilt from scratch on every apply as
+  {"include": [own_ref], "exclude": []}, discarding any human-added exclude pattern (e.g. carving
+  out an automation ref from a broad include glob) or additional include entry the next time
+  repo-policy touched that ruleset for an unrelated, modeled-field change -- silently narrowing or
+  widening enforcement scope with no diff/plan output ever mentioning conditions, since it isn't a
+  modeled field.
+
+Now reads both through from current_raw, always keeping repo-policy's own branch ref present in
+  include.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Stop YAML 1.1 octal/sexagesimal int coercion from corrupting numeric fields
+  ([`48e4d87`](https://github.com/shipsolid/repo-policy/commit/48e4d87941ea917b7b4821e4b109ba50ad020843))
+
+Same class of gotcha as the earlier yes/no/on/off fix (8c9d322), for the int resolver instead of the
+  bool one: PyYAML's SafeLoader treats a leading-zero scalar as legacy octal (confirmed:
+  yaml.safe_load("010") returns 8, not 10) and a colon-separated scalar as base-60 sexagesimal. A
+  leading-zero approvals count -- plausible from copy/paste alignment or a %02d-formatted generator
+  -- silently weakened the declared policy instead of matching what was typed, with no error
+  anywhere.
+
+_StrictLoader (renamed from _StrictBoolLoader, since it now narrows two resolvers) drops the int
+  resolver's octal and sexagesimal branches, keeping binary/decimal/hex. A leading-zero scalar like
+  "010" now stays a plain string; pydantic's own int coercion then parses it via Python's int("010")
+  == 10, producing the value a human actually expects rather than erroring or silently
+  reinterpreting it. Verified the loader remains exactly as safe as SafeLoader (no constructors
+  added or changed).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+
 ## v0.4.5 (2026-09-19)
 
 ### Bug Fixes
