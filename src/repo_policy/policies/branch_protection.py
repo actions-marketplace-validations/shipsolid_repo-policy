@@ -1,26 +1,13 @@
 from __future__ import annotations
 
 from repo_policy.github_client import _actor_refs, _unwrap
-from repo_policy.models import BranchPolicy, PullRequestPolicy
+from repo_policy.models import BranchPolicy, permissive_branch_policy
 from repo_policy.policies import pull_requests, status_checks
 
 
 def from_api(data: dict | None, *, signed_commits: bool) -> BranchPolicy:
     if data is None:
-        return BranchPolicy(
-            enforcement="branch_protection",
-            pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
-            status_checks=None,
-            signed_commits=signed_commits,
-            linear_history=False,
-            allow_force_push=True,
-            allow_deletion=True,
-            enforce_admins=False,
-            required_conversation_resolution=False,
-            lock_branch=False,
-            allow_fork_syncing=False,
-            clear_restrictions=True,
-        )
+        return permissive_branch_policy("branch_protection", signed_commits=signed_commits)
     return BranchPolicy(
         enforcement="branch_protection",
         pull_requests=pull_requests.from_branch_protection(data.get("required_pull_request_reviews")),

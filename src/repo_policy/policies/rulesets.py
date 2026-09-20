@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from repo_policy.models import _RULESET_UNSUPPORTED_FIELDS, BranchPolicy, PullRequestPolicy
+from repo_policy.models import _RULESET_UNSUPPORTED_FIELDS, BranchPolicy, permissive_branch_policy
 from repo_policy.policies import pull_requests, status_checks
 
 
@@ -26,20 +26,11 @@ def from_api(data: dict | None) -> BranchPolicy:
     # enforce_admins/required_conversation_resolution/lock_branch/allow_fork_syncing/
     # clear_restrictions have no GitHub Rulesets equivalent and are rejected for
     # enforcement: ruleset by BranchPolicy's model validator (models.py) -- hardcoded (via
-    # models._RULESET_UNSUPPORTED_FIELDS, the single source of truth for these permissive values)
-    # so resolve_desired()/diff() always report zero drift for them on a ruleset-enforced branch,
-    # in every mode.
+    # models.FIELD_SPECS, the single source of truth for these permissive values) so
+    # resolve_desired()/diff() always report zero drift for them on a ruleset-enforced branch, in
+    # every mode.
     if data is None:
-        return BranchPolicy(
-            enforcement="ruleset",
-            pull_requests=PullRequestPolicy(required=False, approvals=0, code_owner_review=False),
-            status_checks=None,
-            signed_commits=False,
-            linear_history=False,
-            allow_force_push=True,
-            allow_deletion=True,
-            **_RULESET_UNSUPPORTED_FIELDS,
-        )
+        return permissive_branch_policy("ruleset")
     rules_by_type = {rule["type"]: rule for rule in data.get("rules", [])}
     return BranchPolicy(
         enforcement="ruleset",

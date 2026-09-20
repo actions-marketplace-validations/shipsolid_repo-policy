@@ -11,6 +11,7 @@ from repo_policy.models import (
     RepoSettingsPolicy,
     StatusChecksPolicy,
     effective_strict,
+    permissive_branch_policy,
 )
 
 
@@ -204,3 +205,19 @@ def test_ruleset_unsupported_fields_derived_from_field_specs():
 def test_field_specs_inverted_fields():
     inverted = {spec.name for spec in FIELD_SPECS if spec.inverted}
     assert inverted == {"allow_force_push", "allow_deletion", "clear_restrictions"}
+
+
+def test_permissive_branch_policy_branch_protection():
+    policy = permissive_branch_policy("branch_protection", signed_commits=True)
+    assert policy.enforcement == "branch_protection"
+    assert policy.signed_commits is True
+    assert policy.pull_requests == PERMISSIVE_PULL_REQUESTS
+    assert policy.status_checks is None
+    assert policy.clear_restrictions is True
+    assert policy.enforce_admins is False
+
+
+def test_permissive_branch_policy_ruleset_defaults_signed_commits_false():
+    policy = permissive_branch_policy("ruleset")
+    assert policy.enforcement == "ruleset"
+    assert policy.signed_commits is False

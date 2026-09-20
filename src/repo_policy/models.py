@@ -129,6 +129,23 @@ class BranchPolicy(BaseModel):
         return self
 
 
+def permissive_branch_policy(
+    enforcement: Literal["branch_protection", "ruleset"], *, signed_commits: bool = False
+) -> BranchPolicy:
+    """The fully-permissive ("nothing configured") BranchPolicy for a branch with no existing
+    protection/ruleset -- used by branch_protection.from_api(None) and rulesets.from_api(None) as
+    their "no current state" baseline. `signed_commits` is a real, separately-fetched fact (via
+    GitHubClient.get_required_signatures for branch_protection; hardcoded False for rulesets,
+    since "no ruleset exists" already means no required_signatures rule), not a schema default, so
+    it's a parameter rather than sourced from FIELD_SPECS. Built from FIELD_SPECS so it can't
+    drift from diff._SCHEMA_DEFAULTS / resolve_desired()'s own strict-mode defaults."""
+    return BranchPolicy(
+        enforcement=enforcement,
+        signed_commits=signed_commits,
+        **{spec.name: spec.default for spec in FIELD_SPECS if spec.name != "signed_commits"},
+    )
+
+
 class RepoSettingsPolicy(BaseModel):
     delete_branch_on_merge: bool | None = None
     allow_update_branch: bool | None = None

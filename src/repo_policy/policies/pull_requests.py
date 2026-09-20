@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 from repo_policy.github_client import _actor_refs
-from repo_policy.models import PullRequestPolicy
+from repo_policy.models import PERMISSIVE_PULL_REQUESTS, PullRequestPolicy
 
 
 def to_branch_protection(policy: PullRequestPolicy, current: dict | None = None) -> dict | None:
@@ -38,10 +38,7 @@ def to_branch_protection(policy: PullRequestPolicy, current: dict | None = None)
 
 def from_branch_protection(data: dict | None) -> PullRequestPolicy:
     if data is None:
-        return PullRequestPolicy(
-            required=False, approvals=0, code_owner_review=False,
-            dismiss_stale_reviews=False, require_last_push_approval=False,
-        )
+        return PERMISSIVE_PULL_REQUESTS
     return PullRequestPolicy(
         required=True,
         approvals=data.get("required_approving_review_count", 0),
@@ -71,10 +68,7 @@ def to_ruleset_rule(policy: PullRequestPolicy) -> dict | None:
 
 def from_ruleset_rule(rule: dict | None) -> PullRequestPolicy:
     if rule is None:
-        return PullRequestPolicy(
-            required=False, approvals=0, code_owner_review=False,
-            dismiss_stale_reviews=False, require_last_push_approval=False,
-        )
+        return PERMISSIVE_PULL_REQUESTS
     params = rule["parameters"]
     return PullRequestPolicy(
         required=True,
