@@ -28,6 +28,26 @@ def test_to_branch_protection_preserves_strict_from_current_state():
     assert payload["strict"] is True
 
 
+def test_to_branch_protection_preserves_app_id_from_current_state():
+    """app_id has no modeled field -- a human-pinned "only this GitHub App may satisfy this
+    check" must survive a checks-array rebuild triggered by an unrelated declared change, not be
+    reset to null (any app) on every apply."""
+    current = {"strict": False, "checks": [{"context": "build", "app_id": 12345}]}
+    payload = status_checks.to_branch_protection(StatusChecksPolicy(required=["build"]), current=current)
+    assert payload["checks"] == [{"context": "build", "app_id": 12345}]
+
+
+def test_to_branch_protection_defaults_new_check_app_id_null_alongside_existing_pinned_check():
+    current = {"strict": False, "checks": [{"context": "build", "app_id": 12345}]}
+    payload = status_checks.to_branch_protection(
+        StatusChecksPolicy(required=["build", "test"]), current=current
+    )
+    assert payload["checks"] == [
+        {"context": "build", "app_id": 12345},
+        {"context": "test", "app_id": None},
+    ]
+
+
 def test_from_branch_protection_none_when_absent():
     assert status_checks.from_branch_protection(None) is None
 
@@ -67,6 +87,31 @@ def test_to_ruleset_rule_preserves_strict_from_current_state():
 def test_to_ruleset_rule_defaults_do_not_enforce_on_create_false_when_no_current_state():
     rule = status_checks.to_ruleset_rule(StatusChecksPolicy(required=["build"]), current=None)
     assert rule["parameters"]["do_not_enforce_on_create"] is False
+
+
+def test_to_ruleset_rule_preserves_integration_id_from_current_state():
+    """integration_id has no modeled field -- the ruleset counterpart of app_id above, same
+    reason: a human-pinned check-to-app binding must survive a rules-array rebuild."""
+    current_rule = {
+        "type": "required_status_checks",
+        "parameters": {"required_status_checks": [{"context": "build", "integration_id": 999}]},
+    }
+    rule = status_checks.to_ruleset_rule(StatusChecksPolicy(required=["build"]), current=current_rule)
+    assert rule["parameters"]["required_status_checks"] == [{"context": "build", "integration_id": 999}]
+
+
+def test_to_ruleset_rule_omits_integration_id_for_new_check_with_no_current_pin():
+    current_rule = {
+        "type": "required_status_checks",
+        "parameters": {"required_status_checks": [{"context": "build", "integration_id": 999}]},
+    }
+    rule = status_checks.to_ruleset_rule(
+        StatusChecksPolicy(required=["build", "test"]), current=current_rule
+    )
+    assert rule["parameters"]["required_status_checks"] == [
+        {"context": "build", "integration_id": 999},
+        {"context": "test"},
+    ]
 
 
 def test_to_ruleset_rule_preserves_do_not_enforce_on_create_from_current_state():
