@@ -88,8 +88,9 @@ repo-policy apply --repo acme/widgets
 | `plan`      | `--config`, `--repo`, `--token`   | Same diff engine as `audit`, renders a human-readable +/-/~/✓ preview                                          | same as `audit`                                                                                                                                                                               |
 | `apply`     | `--config`, `--repo`, `--token`   | Executes only the changes `plan` would show, then re-verifies live state from scratch before reporting success | 0 mutations converged (incl. no-op), 1 mutations succeeded but a fresh post-apply check still finds drift, 2 invalid config or setup failure, 3 API/auth error or partial-application failure |
 
-**Token resolution order:** `--token` → `GITHUB_TOKEN` → `GH_TOKEN`. **Repo resolution order:**
-`--repo owner/name` → `$GITHUB_REPOSITORY` → the local git `origin` remote.
+**Token resolution order:** `--token` → `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token` (a local
+`gh` CLI login, tried last and only as a convenience — see [SECURITY.md](SECURITY.md)). **Repo
+resolution order:** `--repo owner/name` → `$GITHUB_REPOSITORY` → the local git `origin` remote.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md)'s "Apply Outcomes and Exit Codes" for the full preflight /
 mutate / verify breakdown behind `apply`'s row above.
@@ -129,6 +130,8 @@ Supported fields:
 | per branch      | `status_checks.required`                                                                                                                                                                     | `list[str]`, no blank or duplicate entries                                                                                      |
 | per branch      | `signed_commits`, `linear_history`, `allow_force_push`, `allow_deletion`                                                                                                                     | `bool`                                                                                                                          |
 | per branch      | `enforce_admins`, `required_conversation_resolution`, `lock_branch`, `allow_fork_syncing`, `clear_restrictions`                                                                              | `bool` — **no GitHub Rulesets equivalent**; rejected under `enforcement: ruleset` unless left at their permissive (no-op) value |
+| per branch      | `pull_requests.dismissal_restrictions.users`, `.teams`                                                                                                                                       | `list[str]` each, **at least one required when declared** — users/teams only (no `apps`); **no GitHub Rulesets equivalent**     |
+| per branch      | `pull_requests.bypass_pull_request_allowances.users`, `.teams`, `.apps`                                                                                                                      | `list[str]` each, **at least one required when declared**; **no GitHub Rulesets equivalent**                                    |
 | `repo_settings` | `delete_branch_on_merge`, `allow_update_branch`, `vulnerability_alerts`, `automated_security_fixes`, `private_vulnerability_reporting`, `secret_scanning`, `secret_scanning_push_protection` | `bool`                                                                                                                          |
 
 Two cross-field rules are enforced at validation time, before any API call:
@@ -138,6 +141,12 @@ Two cross-field rules are enforced at validation time, before any API call:
 - `automated_security_fixes: true` requires `vulnerability_alerts: true`, and
   `secret_scanning_push_protection: true` requires `secret_scanning: true` — GitHub rejects enabling
   either one before its prerequisite.
+
+`pull_requests.dismissal_restrictions`/`pull_requests.bypass_pull_request_allowances`, when
+declared, must name at least one user, team, (or app, for the bypass field) — an empty allow-list
+is rejected outright rather than sent to GitHub, since it would be ambiguous between "no
+restriction" and "restrict to nobody." See
+[`docs/adrs/0005-nested-actor-list-fields.md`](docs/adrs/0005-nested-actor-list-fields.md) for why.
 
 `repo-policy validate` checks all of the above against a real `policy.yml`, entirely offline.
 
