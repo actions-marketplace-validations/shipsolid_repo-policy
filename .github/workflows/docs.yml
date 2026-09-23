@@ -1,0 +1,73 @@
+name: Docs
+
+# Two independent publish targets, built from two docs-site.yaml configs (the
+# shared engine bakes a single `base` path into each Astro build, so GitHub
+# Pages' project subpath and Cloudflare Workers' domain root need separate
+# configs — see docs-site.yaml / docs-site.cloudflare.yaml headers):
+#
+#   - `pages` job: builds docs-site.yaml (base /repo-policy/) via the shared
+#     shipsolid/docs-site engine and deploys to GitHub Pages on push to main.
+#   - `cloudflare-build-check` job: re-runs scripts/build-docs.sh (the exact
+#     command Cloudflare's own native Git integration uses, dashboard-
+#     configured to watch this repo directly — see Settings -> Builds on the
+#     repo-policy Worker) so a broken build / dead link is caught here first.
+#     It does not deploy; Cloudflare's own build does that, publishing to
+#     https://repo-policy.shipsolid.workers.dev/. Worker config: wrangler.jsonc.
+#
+# The reusable workflow is hash-pinned, not tracked at @main as
+# shipsolid/docs-site's own README recommends for consumers — this repo's
+# zizmor policy (see the `security` job in ci.yml) requires every `uses:` in
+# .github/workflows to resolve to a commit SHA, no exceptions configured.
+# That trades away the engine's "fixes land with no version bump" model for
+# this repo's docs build specifically: bumping the pin below is now a manual
+# step here whenever an upstream engine fix is needed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "docs-site.yaml"
+      - "docs-site.cloudflare.yaml"
+      - "scripts/build-docs.sh"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "docs-site.yaml"
+      - "docs-site.cloudflare.yaml"
+      - "scripts/build-docs.sh"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pages:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: shipsolid/docs-site/.github/workflows/build-deploy.yml@4ec7cfc7b728bc0dbb9113f1993dc050729f5565 # main
+    with:
+      # Deploy to Pages only on push to main; PRs and manual dispatch just build.
+      deploy: ${{ github.event_name == 'push' }}
+
+  cloudflare-build-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build docs (Cloudflare config) — build-check only, Cloudflare deploys via its own Git integration
+        env:
+          REPO_SLUG: ${{ github.repository }}
+        run: bash scripts/build-docs.sh
