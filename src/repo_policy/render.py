@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from repo_policy.apply import ApplyJournalEntry
 from repo_policy.diff import _FIELDS, Change
 from repo_policy.models import FIELD_SPECS
 from repo_policy.repo_settings import RepoSettingsResult
@@ -8,6 +9,18 @@ _SYMBOLS = {"add": "+", "modify": "~", "remove": "-"}
 
 # Derived from models.FIELD_SPECS (single source of truth) rather than hand-typed a second time.
 _LABELS = {spec.name: spec.label for spec in FIELD_SPECS}
+
+# apply._branch_changes / rulesets.metadata_changes emit Change objects for these fields too --
+# they describe the owned ruleset object itself (ADR 0004), not a BranchPolicy field, so they have
+# no FIELD_SPECS entry to derive a label from.
+_RULESET_METADATA_LABELS = {
+    "ruleset_enforcement": "Ruleset enforcement",
+    "ruleset_target": "Ruleset target",
+    "ruleset_conditions": "Ruleset branch scope",
+    "ruleset_bypass_actors": "Ruleset bypass actors",
+    "ruleset_effectiveness": "Ruleset effective on branch",
+}
+_LABELS |= _RULESET_METADATA_LABELS
 
 _REPO_SETTINGS_LABELS = {
     "delete_branch_on_merge": "Delete branch on merge",
@@ -41,6 +54,26 @@ def render_plan(repo: str, branch: str, changes: list[Change]) -> str:
         lines.append(f"{len(changes)} {noun} required.")
 
     return "\n".join(lines)
+
+
+def render_apply_journal(journal: list[ApplyJournalEntry]) -> list[str]:
+    """One deterministic line per journaled resource (a branch, or a "repo settings: ..." mutation
+    group) -- suitable for a local terminal or GitHub Actions logs: only the resource name, its
+    change count, and its outcome, never a token or a full API request/response payload. Used both
+    for a normal apply's per-resource progress and, via PartialApplyError.summary.journal, to
+    render exactly what completed before a mutation failure."""
+    lines = []
+    for entry in journal:
+        if entry.status == "applied":
+            noun = "change" if len(entry.changes) == 1 else "changes"
+            lines.append(f"{entry.resource}: applied {len(entry.changes)} {noun}")
+        elif entry.status == "verified":
+            lines.append(f"{entry.resource}: no changes needed")
+        elif entry.status == "unavailable":
+            lines.append(f"{entry.resource}: unavailable on this repository")
+        else:
+            lines.append(f"{entry.resource}: failed -- {len(entry.changes)} change(s) not applied")
+    return lines
 
 
 def render_repo_settings(repo: str, result: RepoSettingsResult) -> str:

@@ -1,0 +1,106 @@
+# repo-policy's own self-policy -- dogfooding the tool on the repo that builds it.
+#
+# Enforcement choice (main): `branch_protection`, not `ruleset`. ADR-0004 and Task 1 of the
+# audit-remediation plan made `ruleset` the more actively-hardened mechanism (effective-ruleset
+# applicability, canonical `repo-policy:<branch>` ownership naming, no bypass actors), and it would
+# otherwise be the preferred choice for dogfooding. Two fields declared below independently rule it
+# out, though -- either one alone is already enough to force `branch_protection` (confirmed by
+# testing each in isolation with `repo-policy validate`, not just read from source):
+#
+#   - `required_conversation_resolution: true` -- no GitHub Rulesets equivalent at all.
+#   - `enforce_admins: true` -- also no Rulesets equivalent, for a concrete reason: repo-policy's
+#     ruleset backend hardcodes `bypass_actors: []` on every apply, unconditionally
+#     (`src/repo_policy/policies/rulesets.py`'s `to_api_payload` -- "canonical, always-active,
+#     exactly-scoped, no-bypass shape"), with no modeled field to set it otherwise. Rulesets
+#     express "no admin exemption" via an empty bypass-actors list, which repo-policy's backend
+#     already always produces -- so `enforce_admins: true`'s *intent* is actually satisfied by
+#     `ruleset` today. But there's no way to declare it, or the opposite (`enforce_admins: false`,
+#     a live toggle under branch_protection), so the schema rejects the field outright rather than
+#     silently ignore a value it can't act on either way (`src/repo_policy/models.py`'s
+#     `_RULESET_UNSUPPORTED_FIELDS`, enforced by `BranchPolicy._reject_ruleset_unsupported_fields`).
+#
+# Both are non-negotiable requirements here (see this file's inline comments on each), so
+# `branch_protection` is the only schema-valid choice that satisfies them, not a stylistic
+# fallback. If either requirement is ever dropped, re-check the *other* one too before assuming
+# `ruleset` becomes viable -- don't re-derive this from source next time, this is the answer.
+#
+# `signed_commits` is deliberately left unset (not `true`) on every branch below. Task 10's own
+# work (dedicated release-bot identity + SSH signing key infrastructure) is now essentially done --
+# but turning `signed_commits: true` on here is a SEPARATE decision from that, not a follow-on step
+# now that Task 10 is complete. It would require every future commit to `main` to be signed --
+# including the human maintainer's own personal commits and PRs, not just the release-bot's -- which
+# needs the maintainer's own commit-signing setup (a distinct, not-yet-done piece of work, out of
+# scope for the release pipeline itself). Revisit this once that exists.
+version: 1
+
+branches:
+  main:
+    enforcement: branch_protection
+
+    pull_requests:
+      required: true
+      # Zero mandatory approving reviews while the project has one maintainer -- there is no one
+      # else to approve, and requiring self-approval-adjacent review would just force clicking
+      # "approve" on your own PR, which enforces nothing. Raise this to >=1 the day a second active
+      # maintainer joins (see SECURITY.md's threat model: this is also the primary defense against
+      # a compromised-reviewer-free `policy.yml` edit slipping through once review exists).
+      approvals: 0
+      code_owner_review: false
+      # Harmless no-op at approvals: 0 (there's no approval to dismiss yet) -- set now so it's
+      # already correct the day approvals become non-zero, instead of a second PR to flip it then.
+      dismiss_stale_reviews: true
+      require_last_push_approval: false
+
+    status_checks:
+      # Task 6's stable name: the `required` job in ci.yml, which itself `needs:` every real
+      # gating job -- pointing here instead of at individual job names means adding or removing a
+      # CI job never requires a matching branch-policy edit.
+      #
+      # Live-verified against PR #1's own first real CI run (2026-09-21): a directly
+      # `pull_request`-triggered job's check-run name is exactly its own `name:` field --
+      # "required" -- with NO automatic "<workflow name> / " prefix. That prefixed form
+      # ("CI / required") is what earlier tasks assumed based on the "workflow / job" grouping
+      # GitHub's UI displays for readability, and is genuinely what a *nested* `workflow_call`
+      # invocation produces (e.g. release.yml calling ci.yml surfaces as "Release / ci / ..."),
+      # but it does not apply to a direct trigger. The wrong value here silently produced
+      # `mergeStateStatus: BLOCKED` on a fully-green PR -- GitHub was waiting forever for a
+      # status string CI would never actually report. Confirmed only one job repo-wide is named
+      # `required` (ci.yml), so no cross-workflow collision risk from the unprefixed name.
+      required: ["required"]
+
+    linear_history: true
+    allow_force_push: false
+    allow_deletion: false
+
+    # Admins (today: the sole maintainer) are NOT exempt from the rules above -- deliberate, not
+    # an oversight, and cheaper than it first looks. enforce_admins: true means no direct
+    # `git push` to main for anyone, including the maintainer -- everything goes through a PR. But
+    # approvals: 0 is already set above, so the maintainer can self-merge their own PR the instant
+    # `required` goes green -- there is no second-approver wait to sit through. The real cost
+    # is narrow: you're only genuinely blocked when CI itself is broken, which is exactly what the
+    # "Emergency recovery" procedure in SECURITY.md exists for. The payoff: force-push protection,
+    # deletion protection, and the required CI check all apply to admin-level access too -- no
+    # silent exemption for whoever holds the credentials, even if those credentials are ever
+    # compromised, consistent with this being a security-governance tool's own repo.
+    enforce_admins: true
+    required_conversation_resolution: true
+    lock_branch: false
+    # false pairs with lock_branch: false above -- BranchPolicy rejects allow_fork_syncing: true
+    # without lock_branch: true also set (GitHub silently resets it otherwise); declared explicitly
+    # so this policy's intent doesn't depend on remembering an undeclared default.
+    allow_fork_syncing: false
+    # Clears any push-restriction allowlist GitHub may already hold for this branch -- this policy
+    # is the single source of truth for who can push, not a GitHub UI setting made out-of-band.
+    clear_restrictions: true
+
+repo_settings:
+  delete_branch_on_merge: true
+  allow_update_branch: true
+  vulnerability_alerts: true
+  automated_security_fixes: true
+  private_vulnerability_reporting: true
+  # Declares the two settings SECURITY.md's "Repository Settings Declared, Pending First `apply`"
+  # section tracks -- this policy is what turns them on the first time `repo-policy apply` runs
+  # against this repository (needs repo-admin credentials this codebase change alone can't grant).
+  secret_scanning: true
+  secret_scanning_push_protection: true

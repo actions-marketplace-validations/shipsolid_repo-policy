@@ -1,6 +1,338 @@
 # CHANGELOG
 
 
+## v0.5.0 (2026-09-21)
+
+### Bug Fixes
+
+- Release job detaches HEAD before computing the version bump
+  ([#25](https://github.com/shipsolid/repo-policy/pull/25),
+  [`426acce`](https://github.com/shipsolid/repo-policy/commit/426accecc2e066afeae444106a4e40cfdd11e7f1))
+
+The "Fast-forward to main's current tip" step ran `git checkout origin/main` -- checking out the
+  remote-tracking ref directly leaves the working tree in detached HEAD state, distinct from `git
+  checkout main`. semantic-release's `branch = "main"` config (pyproject.toml) refuses to compute a
+  version there: "Detached HEAD state cannot match any release groups" (confirmed live -- run
+  35652737004, triggered by PR #24 landing on main).
+
+The job's own initial `actions/checkout` (no `ref:` override) already leaves HEAD attached to local
+  `main` for a push-to-main trigger; this step only needs to fast-forward that local branch to
+  origin/main's current tip (in case other PRs merged while the job sat at the environment-approval
+  gate), not re-checkout anything. `git merge --ff-only origin/main` does that while staying on the
+  branch, and still fails loudly under this step's existing `set -euo pipefail` if origin/main
+  somehow isn't a fast-forward -- the same safety property the checkout-based version accidentally
+  had.
+
+Confirmed via grep this was the only `checkout origin/<branch>` occurrence across every workflow
+  file.
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Chores
+
+- Update ([#22](https://github.com/shipsolid/repo-policy/pull/22),
+  [`e9d199f`](https://github.com/shipsolid/repo-policy/commit/e9d199f8eee74c45bf48d905a2cc7dec73144bdc))
+
+- Update ([#23](https://github.com/shipsolid/repo-policy/pull/23),
+  [`eb7e70e`](https://github.com/shipsolid/repo-policy/commit/eb7e70ed9c27511a42fe4691b919a9367e1c74d9))
+
+### Continuous Integration
+
+- Fast-forward the release job to main before computing the version bump
+  ([`d8b9862`](https://github.com/shipsolid/repo-policy/commit/d8b98620a5e88dafe6e4a4a47c045e5b2ba32444))
+
+The release job's checkout defaults to github.sha, frozen at trigger time, but the job can sit for
+  up to 45 minutes at the release environment's human-approval gate. Any commit that merges to main
+  in that window -- including this session's own Task 4 -- leaves the version-bump commit built on
+  stale state, which GitHub's PAT-workflow-scope protection correctly rejected on 2026-09-21 (run
+  35633848337) once a workflow file had changed in the interim. Fast-forward to origin/main's
+  current tip right before computing the bump, and rebind the 'only touched version/changelog files'
+  validation to the same fresh baseline, so the release commit's tree can never disagree with main
+  on any path.
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Features
+
+- Pr-review actor-list fields and gh CLI token fallback
+  ([#24](https://github.com/shipsolid/repo-policy/pull/24),
+  [`e9893c0`](https://github.com/shipsolid/repo-policy/commit/e9893c08f30ab118a396954e5e4b5d71a84c22e3))
+
+* feat: model dismissal_restrictions and bypass_pull_request_allowances
+
+GitHub's "Restrict who can dismiss pull request reviews" and "Allow specified actors to bypass
+  required pull requests" were previously read-through-preserved only (policies/pull_requests.py
+  could never declare either) -- both are now fully modeled PullRequestPolicy sub-fields, following
+  the exact migration pattern commit 41e59cb used for
+  dismiss_stale_reviews/require_last_push_approval.
+
+Both are nested inside pull_requests, not their own top-level BranchPolicy field -- they only mean
+  anything when pull_requests.required: true, so nesting gets that "meaningless when not required"
+  case handled for free via to_branch_protection's existing early return. Neither has a GitHub
+  Rulesets equivalent; a new, separately-named BranchPolicy validator
+  (_reject_ruleset_unsupported_pull_request_fields) rejects declaring either under enforcement:
+  ruleset, since the existing FIELD_SPECS/ _RULESET_UNSUPPORTED_FIELDS mechanism only tracks
+  top-level field names.
+
+An explicitly-declared actor list must name at least one user/team(/app) -- an all-empty declaration
+  is rejected at validate time rather than sent to GitHub, since this session had no live GitHub
+  access to confirm whether GitHub's API treats a freshly-authored empty allow-list as "no
+  restriction" or "restrict to nobody." See docs/adrs/0005-nested-actor-list-fields.md for the full
+  reasoning, including the resulting known gap: audit/plan/apply now fail with PolicyResolutionError
+  for a branch whose *live* GitHub state happens to carry an all-empty-but-present value for either
+  field. Flagged in ROADMAP.md as needing live e2e verification once a real identity for
+  shipsolid/repo-policy-e2e-fixture is available.
+
+dismissal_restrictions supports only users/teams (no apps field at all, matching GitHub's real API);
+  bypass_pull_request_allowances supports users/teams/apps -- the mechanism for letting a release
+  bot or Dependabot merge without a human review.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+* feat: fall back to gh auth token for local CLI use
+
+_resolve_token previously only checked --token, GITHUB_TOKEN, and GH_TOKEN -- a user running
+  repo-policy locally had to manually export a token even when already logged in via `gh auth
+  login`. Adds a fourth, silent, last-resort fallback: _gh_cli_token() shells out to `gh auth
+  token`, mirroring _resolve_repo's existing `git remote get-url origin` fallback exactly
+  (subprocess.run with check=False, FileNotFoundError for a missing binary, returncode checked
+  before trusting stdout).
+
+Only reached when all three explicit sources are absent -- an intentional flag or env var always
+  wins. Verified end-to-end against the real GitHub API (audit against shipsolid/repo-policy with
+  GITHUB_TOKEN/GH_TOKEN unset, using this machine's real `gh` login). Pure local-CLI convenience:
+  GitHub Actions usage is unaffected, since an Actions runner never has an interactive `gh auth
+  login` session to reuse and already requires an explicit token regardless.
+
+Caught and fixed a real test fragility while implementing:
+  test_audit_reports_usage_error_when_no_token_configured only deleted GITHUB_TOKEN/GH_TOKEN, so on
+  any machine with `gh` actually logged in (this dev machine included) it would have started passing
+  for the wrong reason -- now also mocks `gh auth token` to fail, restoring a deterministic "no
+  token available at all" scenario.
+
+SECURITY.md documents the new trust boundary this introduces (shelling out to whatever `gh` binary
+  is first on PATH) explicitly, rather than leaving it implicit.
+
+---------
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+
+## v0.4.10 (2026-09-21)
+
+### Bug Fixes
+
+- Report absent delete_branch_on_merge/allow_update_branch as unavailable, not drift
+  ([`907b950`](https://github.com/shipsolid/repo-policy/commit/907b950a3d480bccef55daf583369374b4d846d5))
+
+GET /repos/{owner}/{repo} omits both keys when the token cannot see them (a fine-grained
+  Administration: Read-only PAT, live-confirmed on shipsolid/repo-policy). diff_flat_settings read
+  the absent key as False and reported a permanent false 'add', which is why every policy-audit.yml
+  run failed since the audit token was created. Route absent keys to 'unavailable', the same
+  contract diff_security_and_analysis adopted in v0.4.8.
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Resolve the repository from SSH host-alias origin URLs
+  ([`6b08b1a`](https://github.com/shipsolid/repo-policy/commit/6b08b1a6493d01eeef15a8202cb48d40cb2b18b2))
+
+* fix: resolve the repository from SSH host-alias origin URLs
+
+git@github.com-work:owner/name (an ~/.ssh/config alias) previously fell through to 'could not
+  determine repository' and forced --repo.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+* fix: tighten github.com host match to reject lookalike domains
+
+The prior _GITHUB_REMOTE regex had no left boundary before `github\.com` and allowed dots in the
+  alias-suffix segment, so a lookalike host containing that substring (mygithub.com,
+  github.company.com, github.comcast.net) was silently mis-resolved to a valid-looking owner/repo
+  instead of raising 'could not determine repository' as docs/troubleshooting.md promises.
+
+Anchor on an actual host-start position ((?:^|[@/])) and restrict the optional ~/.ssh/config alias
+  suffix to a `-`-prefixed segment, matching the original task-8 intent without regressing any of
+  the four supported origin shapes.
+
+---------
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Build System
+
+- Pin dev toolchain versions so CI gates cannot drift on upstream releases
+  ([`952199e`](https://github.com/shipsolid/repo-policy/commit/952199ec5ed20c310728e1f084c2c030d3f197a6))
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Chores
+
+- Update ([#14](https://github.com/shipsolid/repo-policy/pull/14),
+  [`71c0268`](https://github.com/shipsolid/repo-policy/commit/71c0268b9cfa12e58940ea01bd1431529c55f8df))
+
+- **release**: V0.4.10 [skip ci]
+  ([`82516ca`](https://github.com/shipsolid/repo-policy/commit/82516ca849d9daf0bc1c2fcd803da74047e55e15))
+
+### Continuous Integration
+
+- Harden e2e.yml -- explicit permissions, no persisted checkout credentials, named job
+  ([`3fa89a3`](https://github.com/shipsolid/repo-policy/commit/3fa89a37361ecc86bc38a39b7b0ba39afdaed1f9))
+
+Brings the last unhardened workflow to the baseline the other four already meet, and closes CodeQL
+  alert #2 (actions/missing-workflow-permissions).
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+- Ignore Python major/minor base-image bumps in Dependabot
+  ([`a80fae7`](https://github.com/shipsolid/repo-policy/commit/a80fae7f8944b4ee87950d5f1fea7af6416dde22))
+
+The Action's dependency lock is compiled for Python 3.12; a 3.13/3.14 base-image PR can never pass
+  verify-action-lock without a matching lock regeneration, so it must be a deliberate change, not a
+  weekly proposal.
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Record Task 14's production-readiness evidence
+  ([`778bfa6`](https://github.com/shipsolid/repo-policy/commit/778bfa6eea31d386ed4ae4c4517bd7feabdb3992))
+
+Adds docs/release-readiness-v1.md consolidating the full evidence trail for Task 14: pre-release
+  checks, live self-governance verification (2 real gaps found and fixed), release trust artifacts
+  independently re-verified against v0.4.9, the full incident narrative (3 real bugs found and fixed
+  across 4 live release attempts), and the re-audit from published artifacts. Decision recorded: GO.
+
+
+## v0.4.9 (2026-09-21)
+
+### Bug Fixes
+
+- Advance local main to the merged commit before creating the GitHub release
+  ([`d55a55d`](https://github.com/shipsolid/repo-policy/commit/d55a55d2d9920ba1bdb3b2250120dc3dd2bfbe8b))
+
+The release job's checkout happens once, at the start, before the version-bump commit and
+  squash-merge. Nothing reconciled local main with the real merged commit before the
+  changelog/release-creation step, which needs local HEAD to have reached it. This fix resets local
+  main to the merged commit right before that step runs. v0.4.8's commit and tag are already live
+  and correct; that release never completed (no GitHub Release, no PyPI publish). This fix will
+  trigger its own release (v0.4.9) that supersedes the incomplete v0.4.8.
+
+### Chores
+
+- **release**: V0.4.9 [skip ci]
+  ([`ba69faa`](https://github.com/shipsolid/repo-policy/commit/ba69faa05ab3a2128ec52739b096d83a42bb7504))
+
+
+## v0.4.8 (2026-09-21)
+
+### Bug Fixes
+
+- Don't report secret scanning as drifted when token can't see security_and_analysis
+  ([`21a156e`](https://github.com/shipsolid/repo-policy/commit/21a156e5d65b769020a569a74bac1094aaccb59a))
+
+diff_security_and_analysis() collapsed two different GET /repos/{owner}/{repo} response shapes into
+  the same "disabled" reading: (1) the security_and_analysis block present but a sub-key
+  legitimately absent/off, and (2) the whole block missing because the authenticated token lacks
+  permission to see it. Case 2 was treated as "disabled" for diff purposes, producing a false
+  positive on the live self-audit.
+
+diff_security_and_analysis now returns (changes, unavailable_field_names) instead of just a list of
+  changes -- when the whole block is absent, every declared field routes to `unavailable` rather
+  than being diffed as False, mirroring the existing diff_toggle/private_vulnerability_reporting
+  pattern. Behavior is unchanged when the block is present but a sub-key is absent -- that still
+  means "disabled" and still produces a real Change.
+
+### Chores
+
+- Revert erroneous v1.0.0 version bump back to 0.4.7
+  ([`240da00`](https://github.com/shipsolid/repo-policy/commit/240da00920083105d79c0927c2d0d29f9ec8c509))
+
+The release pipeline's version-computation step computed 1.0.0 instead of the correct 0.4.8 for a
+  patch-level release, and that wrong version landed on main before the pipeline failed at a later
+  step. Root cause (a python-semantic-release version mismatch between two steps of release.yml) is
+  being fixed separately. Nothing was ever published externally under 1.0.0 -- no PyPI release, no
+  GitHub Release entry. The erroneous v1.0.0/v1 tags have been deleted.
+
+- Revert second erroneous v1.0.0 bump and finish the PSR pinning fix
+  ([`86420bc`](https://github.com/shipsolid/repo-policy/commit/86420bcd54f92dbf8d99a76fa73fea22ce51a05e))
+
+Fixes the root cause of a live incident (twice): release.yml's version-bump step ran
+  python-semantic-release via a SHA-pinned GitHub Action, but the SHA pins the Action's own code,
+  not the PSR package version its Dockerfile installs. It installed 10.6.2 instead of 9.21.2,
+  computing 1.0.0 instead of 0.4.8. All three PSR invocations in release.yml now pin 9.21.2
+  explicitly via pip, and the version-bump step now sets GIT_COMMIT_AUTHOR explicitly (PSR overrides
+  host git config for committer identity). Both errant v1.0.0/v1 tag pairs have been deleted from
+  origin.
+
+- **deps**: Bump the github-actions-dependencies group across 1 directory with 5 updates
+  ([#3](https://github.com/shipsolid/repo-policy/pull/3),
+  [`d99b109`](https://github.com/shipsolid/repo-policy/commit/d99b109b73b13cd500c575d904529d9fffeaa1b2))
+
+Bumps the github-actions-dependencies group with 5 updates in the / directory:
+
+| Package | From | To | | --- | --- | --- | |
+  [actions/checkout](https://github.com/actions/checkout) | `4.4.0` | `7.0.1` | |
+  [actions/setup-python](https://github.com/actions/setup-python) | `5.6.0` | `7.0.0` | |
+  [actions/upload-artifact](https://github.com/actions/upload-artifact) | `4.6.2` | `7.0.1` | |
+  [actions/download-artifact](https://github.com/actions/download-artifact) | `4.3.0` | `8.0.1` | |
+  [python-semantic-release/python-semantic-release](https://github.com/python-semantic-release/python-semantic-release)
+  | `9.21.2` | `10.6.2` |
+
+Updates `actions/checkout` from 4.4.0 to 7.0.1 - [Release
+  notes](https://github.com/actions/checkout/releases) -
+  [Changelog](https://github.com/actions/checkout/blob/main/CHANGELOG.md) -
+  [Commits](https://github.com/actions/checkout/compare/11d5960a326750d5838078e36cf38b85af677262...3d3c42e5aac5ba805825da76410c181273ba90b1)
+
+Updates `actions/setup-python` from 5.6.0 to 7.0.0 - [Release
+  notes](https://github.com/actions/setup-python/releases) -
+  [Commits](https://github.com/actions/setup-python/compare/a26af69be951a213d495a4c3e4e4022e16d87065...5fda3b95a4ea91299a34e894583c3862153e4b97)
+
+Updates `actions/upload-artifact` from 4.6.2 to 7.0.1 - [Release
+  notes](https://github.com/actions/upload-artifact/releases) -
+  [Commits](https://github.com/actions/upload-artifact/compare/ea165f8d65b6e75b540449e92b4886f43607fa02...043fb46d1a93c77aae656e7c1c64a875d1fc6a0a)
+
+Updates `actions/download-artifact` from 4.3.0 to 8.0.1 - [Release
+  notes](https://github.com/actions/download-artifact/releases) -
+  [Commits](https://github.com/actions/download-artifact/compare/d3f86a106a0bac45b974a628896c90dbdf5c8093...3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c)
+
+Updates `python-semantic-release/python-semantic-release` from 9.21.2 to 10.6.2 - [Release
+  notes](https://github.com/python-semantic-release/python-semantic-release/releases) -
+  [Changelog](https://github.com/python-semantic-release/python-semantic-release/blob/master/CHANGELOG.rst)
+  -
+  [Commits](https://github.com/python-semantic-release/python-semantic-release/compare/21ed7fa03e4a17ac49406eff4b60d5ad050fbdc2...9a026e9303981c866c3425723009becb2437c757)
+
+--- updated-dependencies: - dependency-name: actions/checkout dependency-version: 7.0.1
+
+dependency-type: direct:production
+
+update-type: version-update:semver-major
+
+dependency-group: github-actions-dependencies
+
+- dependency-name: actions/download-artifact dependency-version: 8.0.1
+
+- dependency-name: actions/setup-python dependency-version: 7.0.0
+
+- dependency-name: actions/upload-artifact dependency-version: 7.0.1
+
+- dependency-name: python-semantic-release/python-semantic-release dependency-version: 10.6.2
+
+dependency-group: github-actions-dependencies ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **release**: V0.4.8 [skip ci]
+  ([`b759aa4`](https://github.com/shipsolid/repo-policy/commit/b759aa479e6dbf0b45f0819301e7ad7117374a8b))
+
+- **release**: V1.0.0 [skip ci]
+  ([`de59e98`](https://github.com/shipsolid/repo-policy/commit/de59e98ee5e45113f5f9ab3e94c4509201a01c3f))
+
+- **release**: V1.0.0 [skip ci]
+  ([`2171dd0`](https://github.com/shipsolid/repo-policy/commit/2171dd0db9dbdf558172d209c3fc86dbaf69b95a))
+
+
 ## v0.4.7 (2026-09-20)
 
 ### Bug Fixes

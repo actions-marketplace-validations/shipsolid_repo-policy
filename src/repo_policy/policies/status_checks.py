@@ -3,7 +3,9 @@ from __future__ import annotations
 from repo_policy.models import StatusChecksPolicy
 
 
-def to_branch_protection(policy: StatusChecksPolicy | None, current: dict | None = None) -> dict | None:
+def to_branch_protection(
+    policy: StatusChecksPolicy | None, current: dict | None = None
+) -> dict | None:
     """`current` is the branch's existing required_status_checks GET payload (or None on first
     creation). repo-policy doesn't model the 'require branches up to date' (strict) setting, so
     it's read through from current state rather than reset to False on every apply. Likewise for
@@ -16,7 +18,6 @@ def to_branch_protection(policy: StatusChecksPolicy | None, current: dict | None
     current_app_ids = {check["context"]: check.get("app_id") for check in current.get("checks", [])}
     return {
         "strict": current.get("strict", False),
-        "contexts": list(policy.required),
         "checks": [
             {"context": name, "app_id": current_app_ids.get(name)} for name in policy.required
         ],
@@ -76,4 +77,10 @@ def from_ruleset_rule(rule: dict | None) -> StatusChecksPolicy | None:
     checks = rule["parameters"].get("required_status_checks", [])
     if not checks:
         return None
-    return StatusChecksPolicy(required=[check["context"] for check in checks])
+    # dict.fromkeys dedupes while preserving first-occurrence order -- the ruleset-schema
+    # counterpart of from_branch_protection's identical dedup above: this array can likewise
+    # contain two entries sharing a context but different integration_id (e.g. mid-migration
+    # between CI apps), and StatusChecksPolicy.required now rejects duplicate entries outright
+    # (models.py), so reading back a GitHub ruleset actually in that transient state would
+    # otherwise raise instead of just reporting the (deduped) current state.
+    return StatusChecksPolicy(required=list(dict.fromkeys(check["context"] for check in checks)))

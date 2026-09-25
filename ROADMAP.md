@@ -13,12 +13,14 @@
 | Model `clear_restrictions`, closing the last repo_security field gap | Every other field from the sibling tool's baseline was already covered by Phase 1/2; this was the one remaining gap | shipped | TBD |
 | Fix allow_fork_syncing's wrong permissive default | Found via live-repo verification: GitHub silently discards allow_fork_syncing: true unless lock_branch: true is also set, causing permanent phantom drift on any first-time apply | shipped | TBD |
 | Automated end-to-end test against a disposable real repo | Closes the last manual-only gap in `docs/test-strategy.md`; runs nightly/on-demand against `shipsolid/repo-policy-e2e-fixture` via `.github/workflows/e2e.yml` | shipped | TBD |
+| Model `dismissal_restrictions`/`bypass_pull_request_allowances` (PR-review actor-list fields) | Closes the last two unmodeled `required_pull_request_reviews` fields; `bypass_pull_request_allowances` is the mechanism for letting bots (release automation, Dependabot) merge without a human review — see `docs/adrs/0005-nested-actor-list-fields.md` | shipped | TBD |
 
 ## Next
 
 | Item                                                     | Why                                                                                    | Dependency                                | Target |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------- | ------ |
 | CODEOWNERS / multi-maintainer ownership                  | Currently single-maintainer; not yet warranted                                         | a second regular contributor              | TBD    |
+| Live-verify `dismissal_restrictions`/`bypass_pull_request_allowances`/`restrictions` against the e2e fixture | Unit/model coverage is complete but the real API behavior is unconfirmed. **2026-09-22: attempted with a real second collaborator (`shipsolid-release-bot`) added to `shipsolid/repo-policy-e2e-fixture` — GitHub rejected it outright: `422 "Only organization repositories can have users and team restrictions"`.** A second identity alone isn't sufficient; the fixture repo itself is personal-account-owned (`owner.type: "User"`), and GitHub structurally disallows named user/team restrictions on any personal repo, regardless of collaborator count | `shipsolid/repo-policy-e2e-fixture` (or a second, dedicated fixture) living under a GitHub organization, not a personal account | TBD    |
 
 ## Later (directional, unscheduled)
 

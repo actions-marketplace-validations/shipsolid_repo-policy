@@ -4,16 +4,325 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Lets release.yml depend on this exact job graph as a same-workflow-run dependency (needs: ci)
+  # instead of trusting a separately-triggered workflow's completion after the fact. Purely
+  # additive: doesn't change the pull_request/push behavior above.
+  workflow_call:
+
+# No job inherits repo-default permissions; each job below declares exactly what it needs.
+permissions: {}
 
 jobs:
-  test:
+  lint:
+    name: lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check src tests
+      - run: ruff format --check src tests
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
       - run: mypy src
-      - run: pytest -v
+
+  test:
+    # Task 12, Step 2: `requires-python = ">=3.10"` in pyproject.toml is a claim about every
+    # supported interpreter, not just whichever one CI happens to run on -- before this matrix, CI
+    # only ever proved the package worked on 3.12. lint/typecheck/build/security stay on a single
+    # Python version (3.12) below: those tools' own behavior doesn't vary across our supported
+    # range the way runtime semantics can, so matrixing them would only multiply CI time without
+    # adding coverage.
+    name: test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: pytest --cov=repo_policy --cov-branch --cov-report=term-missing --cov-fail-under=95
+
+  build:
+    name: build
+    # Package-validation job: confirms sdist/wheel build cleanly before release.yml is ever
+    # allowed to run semantic-release against this commit. Also the single source of the dist/
+    # artifacts the wheel-smoke job below installs, so the wheel it tests is built exactly once.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - name: Upload distribution artifacts for the wheel smoke-test job
+        # Named "wheel-smoke-dist", not "dist": release.yml invokes this workflow via
+        # `workflow_call` and its own `release` job (which uploads its own artifact literally
+        # named "dist") runs in that SAME workflow run, sharing one artifact namespace.
+        # actions/upload-artifact@v4 defaults to overwrite: false, so reusing "dist" here would
+        # 409-conflict with release.yml's upload on every real push to main -- a failure that
+        # never shows up on PR CI (release.yml only runs on push to main), only live.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wheel-smoke-dist
+          path: dist/
+          retention-days: 1
+          if-no-files-found: error
+
+  wheel-smoke:
+    # Task 12, Step 3: `pip install -e ".[dev]"` in the `test` matrix above never exercises the
+    # actual packaging path -- this job installs the real built wheel (no dev extras, no editable
+    # install) into clean interpreters at both ends of the supported range and proves the
+    # distributed artifact itself works, not just the source tree.
+    name: wheel-smoke (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wheel-smoke-dist
+          path: dist/
+      - name: Install the built wheel into a clean environment (no dev extras)
+        run: pip install dist/*.whl
+      - name: Verify the wheel imports and reports a well-formed version
+        run: |
+          python -c "import repo_policy; print(repo_policy.__version__)" | grep -Eq "^[0-9]+\.[0-9]+\.[0-9]+$"
+      - name: Verify the installed CLI's --help works
+        run: repo-policy --help
+      - name: Verify config validation works against a known-good policy file
+        run: repo-policy validate --config tests/fixtures/policy_valid.yml
+
+  security:
+    name: security
+    # Narrow, in-scope security gate for this task: static analysis of our own workflow YAML.
+    # Dependency scanning (pip-audit), CodeQL, and a scheduled security.yml are a separate,
+    # dedicated workflow added later - this job only covers what Task 6 touches.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: pip install zizmor==1.30.1
+      # --min-severity high: this job's exit code gates CI (and, transitively, Release) on every
+      # run, so it must fail on the things Task 6's acceptance bar actually cares about (a
+      # High-severity result or an unpinned action) and not on Medium/Low/Informational advisories
+      # that don't meet that bar — otherwise CI is permanently red and no release can ever pass,
+      # which "satisfies" the gate only vacuously. Without this flag, --pedantic's advisory-level
+      # findings (e.g. concurrency-limits, artipacked on a job that legitimately needs to push)
+      # would fail the build regardless of severity.
+      - run: zizmor --pedantic --offline --min-severity high .github/workflows
+
+  validate-self-policy:
+    name: validate-self-policy
+    # Task 9: catches a malformed edit to this repo's own .github/repository-policy.yml at PR
+    # time -- without this job, the only thing that would ever catch it is policy-audit.yml's
+    # scheduled `repo-policy audit` run, which only fires AFTER a bad edit has already landed on
+    # main. Validate-only, so no GitHub token or network access is needed (README's CLI Reference:
+    # "Parses and schema-validates the policy file only; no network calls").
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: repo-policy validate --config .github/repository-policy.yml
+
+  verify-action-lock:
+    name: verify-action-lock
+    # Task 7 interface: "CI fails when requirements-action.in, pyproject.toml, and
+    # requirements-action.txt disagree." tests/test_package.py already checks .in against
+    # pyproject.toml at the unit-test level (covered by the `test` job); this job additionally
+    # regenerates the hash lock itself and byte-compares it against the checked-in
+    # requirements-action.txt, which pytest alone can't do without shelling out to uv.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install uv==0.12.13
+      - run: bash scripts/verify-action-lock.sh
+
+  verify-release-lock:
+    name: verify-release-lock
+    # Task 7's sibling check, applied to the release pipeline's own python-semantic-release install
+    # (see requirements-release.in/.txt and scripts/verify-release-lock.sh): regenerates the hash
+    # lock and byte-compares it against the checked-in requirements-release.txt.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: pip install uv==0.12.13
+      - run: bash scripts/verify-release-lock.sh
+
+  docker:
+    name: docker
+    # Task 7, Steps 6-8: builds the Action's container image twice from a clean Docker build
+    # cache to prove the reproducibility guarantee (digest-pinned base image + hash-locked
+    # dependencies -- see Dockerfile), smoke-tests the image the Action actually ships, and scans
+    # it with Trivy. Two clean builds on the same runner is a legitimate reproducibility check
+    # here specifically because --no-cache forces every layer to be freshly resolved/downloaded
+    # rather than reused, matching what the checked-in Dockerfile pins now guarantee regardless of
+    # cache state.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image (clean build 1 of 2)
+        run: docker build --no-cache -t repo-policy-action:build1 .
+
+      - name: Build image (clean build 2 of 2)
+        run: docker build --no-cache -t repo-policy-action:build2 .
+
+      - name: Compare OS and Python package inventories between the two builds
+        run: |
+          docker run --rm --entrypoint pip repo-policy-action:build1 list --format=freeze | sort > pip-inventory-build1.txt
+          docker run --rm --entrypoint pip repo-policy-action:build2 list --format=freeze | sort > pip-inventory-build2.txt
+          docker run --rm --entrypoint dpkg repo-policy-action:build1 -l > os-inventory-build1.txt
+          docker run --rm --entrypoint dpkg repo-policy-action:build2 -l > os-inventory-build2.txt
+          diff pip-inventory-build1.txt pip-inventory-build2.txt
+          diff os-inventory-build1.txt os-inventory-build2.txt
+
+      - name: Upload package inventories
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docker-action-package-inventories
+          path: |
+            pip-inventory-build1.txt
+            pip-inventory-build2.txt
+            os-inventory-build1.txt
+            os-inventory-build2.txt
+          retention-days: 14
+
+      - name: Smoke test -- validate accepts a known-good policy file
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/tests/fixtures/policy_valid.yml:/tmp/policy.yml:ro" \
+            --entrypoint repo-policy repo-policy-action:build1 \
+            validate --config /tmp/policy.yml
+
+      - name: Smoke test -- an unsupported INPUT_MODE is rejected
+        run: |
+          status=0
+          docker run --rm -e INPUT_MODE=bogus repo-policy-action:build1 || status=$?
+          [ "$status" -eq 2 ]
+
+      - name: Smoke test -- audit --help
+        run: docker run --rm --entrypoint repo-policy repo-policy-action:build1 audit --help
+
+      - name: Smoke test -- installed repo-policy version
+        run: |
+          docker run --rm --entrypoint python repo-policy-action:build1 \
+            -c "import repo_policy; print(repo_policy.__version__)" | grep -Eq "^[0-9]+\.[0-9]+\.[0-9]+$"
+
+      - name: Smoke test -- container runs as a non-root user
+        run: |
+          user="$(docker run --rm --entrypoint whoami repo-policy-action:build1)"
+          [ "$user" != "root" ]
+
+      - name: Smoke test -- non-root user cannot write to the installed application
+        run: |
+          status=0
+          docker run --rm --entrypoint touch repo-policy-action:build1 /app/should-fail || status=$?
+          [ "$status" -ne 0 ]
+
+      - name: Scan for fixable critical vulnerabilities (blocking)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.74.0 image --exit-code 1 --severity CRITICAL --ignore-unfixed \
+            repo-policy-action:build1
+
+      - name: Report critical and high-severity vulnerabilities for review (non-blocking)
+        # Deliberately no --ignore-unfixed here, unlike the blocking step above: an unfixed
+        # CRITICAL is never blocking (there's nothing actionable to require), but it still needs
+        # to be visible to a human reviewer somewhere -- this is that somewhere.
+        if: always()
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.74.0 image --exit-code 0 --severity CRITICAL,HIGH \
+            repo-policy-action:build1
+
+  required:
+    # Stable status name ("required") for branch protection to point at, independent of how many
+    # jobs feed it. Runs even if a dependency failed (if: always()) so it can report failure
+    # itself instead of silently disappearing as "skipped" - a skipped required check does not
+    # block a merge, but a failed one does.
+    name: required
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test, build, security, validate-self-policy, verify-action-lock, verify-release-lock, docker, wheel-smoke]
+    if: always()
+    permissions: {}
+    steps:
+      - name: Check that every required job succeeded
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        env:
+          NEEDS_CONTEXT: ${{ toJSON(needs) }}
+        run: |
+          echo "One or more required jobs did not succeed:" >&2
+          echo "$NEEDS_CONTEXT" >&2
+          exit 1

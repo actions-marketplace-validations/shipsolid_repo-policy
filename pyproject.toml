@@ -4,25 +4,30 @@ build-backend = "hatchling.build"
 
 [project]
 name = "repo-policy"
-version = "0.4.7"
+version = "0.5.0"
 description = "Lightweight, declarative repository governance for GitHub."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "Amit Singh" }]
 dependencies = [
-    "httpx>=0.27,<1.0",
+    "httpx[socks]>=0.27,<1.0",
     "pyyaml>=6.0,<7.0",
     "pydantic>=2.0,<3.0",
     "click>=8.1,<9.0",
 ]
 
 [project.optional-dependencies]
+# Exact pins, not floors: `ruff format --check`, `ruff check` and `mypy` gate every merge, and a
+# floor (`ruff>=0.6`) lets an upstream release turn CI red with nothing in this repo having
+# changed -- the same failure mode scripts/verify-action-lock.sh guards against for hatchling.
+# Dependabot's weekly pip group (see .github/dependabot.yml) proposes the bumps instead.
 dev = [
-    "pytest>=8.0",
-    "respx>=0.21",
-    "ruff>=0.6",
-    "mypy>=1.10",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "respx==0.23.1",
+    "ruff==0.16.8",
+    "mypy==2.3.1",
 ]
 
 [project.scripts]
@@ -45,6 +50,14 @@ markers = [
 ]
 addopts = "-m 'not e2e'"
 
+[tool.coverage.run]
+branch = true
+source = ["repo_policy"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 95
+
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true
@@ -54,7 +67,15 @@ version_toml = ["pyproject.toml:project.version"]
 version_variables = ["src/repo_policy/__init__.py:__version__"]
 branch = "main"
 build_command = "pip install build && python -m build"
-commit_message = "chore(release): {version} [skip ci]"
+# Deliberately NOT "[skip ci]" here (unlike before Task 10): this is the commit message for the
+# release-bot's LOCAL, pre-merge commit on its release branch -- the one whose pull request needs a
+# real `ci.yml` run to produce the `CI / required` check that branch protection requires before
+# merge. GitHub's skip-ci keywords are evaluated against "the HEAD commit of a pull request" for
+# both push and pull_request events, so putting [skip ci] here would silently prevent that check
+# from ever being created and permanently block the release PR from merging. `[skip ci]` still gets
+# added, but later and only to the squash-merge commit that actually lands on `main`, via
+# release.yml's `gh pr merge --subject` -- see that workflow for the full reasoning.
+commit_message = "chore(release): {version}"
 
 [tool.semantic_release.changelog]
 changelog_file = "CHANGELOG.md"
